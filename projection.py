@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import numpy
 from rounding import head,floor
+import gradientOperator
 
 def quadrantFractions( v,h,s ):
    '''For given central vertical & horizontal coordinate and the scale,
@@ -115,15 +116,15 @@ class geometry(object):
       '''For a layer, return the indices per mask pixel and their fractions
       for centre projection (zero zenith angle).
       '''
-      return (self.__maskLayerIdx(layer, [0,0], flat))
+      return (self._maskLayerIdx(layer, [0,0], flat))
              
    def maskLayerIdx(self, layer, azi, flat=0):
       '''For a layer, return the indices per mask pixel and their fractions
       for that azimuth.
       '''
-      return (self.__maskLayerIdx(layer, self.offsets[layer,azi], flat))
+      return (self._maskLayerIdx(layer, self.offsets[layer,azi], flat))
    
-   def __maskLayerIdx(self, layer, offsets, flat):
+   def _maskLayerIdx(self, layer, offsets, flat):
       '''Generic: return for a layer the offset mask position. Use
       maskLayerCentreIdx or maskLayerIdx instead of this.
       '''
@@ -175,6 +176,10 @@ class geometry(object):
       return [0]\
          +(self.layerNpix[:,0]*self.layerNpix[:,1]).cumsum().tolist()
 
+class projection(geometry):
+   '''Based on geometry, calculate the tomography matrices for projection of
+   values.
+   '''
    def layerExtractionMatrix(self):
       '''Define a layer extraction matrix, that extracts each projected
       mask from the concatenated layer-vector.
@@ -286,11 +291,27 @@ class geometry(object):
       sumProjM.ravel()[ sumProjIdx ]=1
       return sumProjM
 
+class projectedModalBasis(geometry):
+   modalBases=[]
+   radialPowers=None
+   angularPowers=None
+
+   def __init__(self, layerHeights, zenAngles, azAngles, pupilMask,
+         radialPowers, angularPowers, 
+         starHeight=None, pixelScale=1, layerNpix=None, sparse=False ):
+      geometry.__init__(self, layerHeights, zenAngles, azAngles, pupilMask,
+         starHeigh, pixelScale, layerNpix)
+      # for each layer, form an independent modal basis object
+      assert self.createLayerMasks()
+      modalBases=[ gradientOperator.modalBasis(
+            thisMask, radialPowers, angularPowers, sparse )
+            for thisMask in self.layerMasks ]
+
 def edgeDetector(mask, clip=8):
    '''Using a convolution filter,
       / 1 1 1 \
       | 1 0 1 |
-      \ 1 0 1 /  to detect neighbouring pixels, find the pixel indices
+      \ 1 1 1 /  to detect neighbouring pixels, find the pixel indices
       corresponding to those that have less than 8, which are those
       with definitely one missing neighbour or less than 7, which are those
       with missing neighbours in the vertical/horizontal directions only.

@@ -1,7 +1,5 @@
 # What is this?
 # Generate gradient operator based on pupil mask
-#
-# 2012/Sept/22 - renamed maskIdx as subapMaskSequential
 
 import matplotlib.pyplot as pg
 import numpy
@@ -11,26 +9,20 @@ import numpy
 #      2 = Hudgin
 #      3 = centred
 
-class gradientOperatorType1:
+limitDP=lambda n,ip :\
+   (numpy.power(10,float(n))*ip).astype(numpy.int32)*numpy.power(10,-float(n))
+
+class geometryType1:
    '''Using Type 1 geometry, define a gradient operator matrix.'''
-   op=None
    numberSubaps=None
    numberPhases=None
-   sparse=False
 
-   def __init__( self, subapMask=None, pupilMask=None, sparse=False ):
-      self.sparse=sparse
-      if self.sparse:
-         self.calcOp=self.calcOp_scipyCSR
-      else:
-         self.calcOp=self.calcOp_NumpyArray
+   def __init__( self, subapMask=None, pupilMask=None ):
       if subapMask!=None: self.newSubaperturesGiven(subapMask)
       if pupilMask!=None: self.newPupilGiven(pupilMask)
 
    def newSubaperturesGiven(self, subapMask):
       self.numberSubaps=int(subapMask.sum()) # =n**2 for all illuminated
-      if self.numberSubaps>1000 and not self.sparse:
-         raise ValueError("Insist on sparsity for numberSubaps>1000")
       self.op=None # reset
       self.n=subapMask.shape
       self.n_=[ x+1 for x in self.n]
@@ -70,16 +62,18 @@ class gradientOperatorType1:
       self.newSubaperturesGiven( ((pupilMask[:-1,:-1]+pupilMask[1:,:-1]\
                   +pupilMask[1:,1:]+pupilMask[:-1,1:])==4) )
 
-   def testInit(self, subapMask):
-      import matplotlib.pyplot as pg
-      # Test
-      pg.imshow(subapMask,interpolation='nearest',
-         extent=[0,self.n[1],0,self.n[0]])
-      pg.plot( numpy.flatnonzero(self.illuminatedCorners.ravel())%self.n_[1],
-               numpy.flatnonzero(self.illuminatedCorners.ravel())//self.n_[0],
-                  'wo' )
-      pg.title("red=illuminated, white=their corners")
-      pg.show()
+class gradientOperatorType1(geometryType1):
+   '''Using Type 1 geometry, define a gradient operator matrix.'''
+   op=None
+   sparse=False
+
+   def __init__( self, subapMask=None, pupilMask=None, sparse=False ):
+      self.sparse=sparse
+      if self.sparse:
+         self.calcOp=self.calcOp_scipyCSR
+      else:
+         self.calcOp=self.calcOp_NumpyArray
+      geometryType1.__init__(self, subapMask, pupilMask)
 
    def returnOp(self):
       if self.numberSubaps==None: return None
@@ -531,6 +525,100 @@ class localMaskOperatorType1(gradientOperatorType1):
          for j in self.finalWantedIdx:
             self.op[i, j]+=1
 
+
+
+class modalBasis(geometryType1):
+   '''Based on type 1 geometry, calculate modal basis upto the specified
+   order of radial terms such that they are orthogonal.
+   NB: this code is only meant for the linear and quadratic terms,
+   perhaps it ought be replaced with Zernike-like terms defined over the
+   aperture to make it more generic.
+   '''
+   op=None
+   numberSubaps=None
+   numberPhases=None
+   sparse=False
+   radialPowers=None
+   angularPowers=None
+
+   def __init__( self, pupilMask, radialPowers=[0], angularPowers=[0],
+         sparse=False, compute=True, verbose=False):
+      self.radialPowers=radialPowers
+      self.angularPowers=angularPowers
+      geometryType1.__init__(self,None,pupilMask)
+      if compute:
+         self.calculateFactors()
+         self.calculatemodalFunctions(verbose)
+
+   def calculateFactors(self):
+      self.cds=[ self.illuminatedCornersIdx//self.n_[0]-(self.n_[0]-1)/2.0
+              ,self.illuminatedCornersIdx%self.n_[1]-(self.n_[1]-1)/2.0 ]
+      self.cds=[ self.cds[i]*(self.n_[i]-1.0)**-1.0 for i in (0,1) ]
+      self.r=(self.cds[0]**2+self.cds[1]**2)**0.5
+      self.rpower=lambda p : numpy.power(self.r,p)
+      self.ang=numpy.arctan2(self.cds[0],self.cds[1])
+      self.angcos=lambda n : numpy.cos(n*self.ang)
+      self.angsin=lambda n : numpy.sin(n*self.ang)
+
+   def modalFunction(self,rPower,angPower,angType):
+      '''rPower, int
+         angPower, int
+         angType, 0=sin,1=cos
+      '''
+      tmf=self.rpower(rPower)*(
+         angType*self.angsin(angPower)+
+         (1-angType)*self.angcos(angPower)
+         )
+      return tmf*(tmf**2.0).sum()**-0.5
+
+   def calculatemodalFunctions(self, verbose=False):
+      self.modalFunctions=[]
+      for tr in self.radialPowers:
+         for ta in xrange(tr%2,min(len(self.angularPowers),tr+1),2):
+            for tt in xrange(1+(ta>0)*1):
+               if verbose: print(tr,ta,tt)
+               self.modalFunctions.append(self.modalFunction(tr,ta,tt))
+      self.modalFunctions=numpy.array(self.modalFunctions)
+      self.mfOrth=limitDP(4,self.modalFunctions.dot(self.modalFunctions.T))
+         # \/ find orthogonal combination of basis
+      self.s,self.v=numpy.linalg.svd(self.mfOrth,full_matrices=1)[1:]
+      self.orthomodalFunctions=\
+         self.v.dot(self.modalFunctions)*(self.s**-0.5).reshape([-1,1]) 
+      self.omfOrth=limitDP(4,
+            self.orthomodalFunctions.dot(self.orthomodalFunctions.T))
+      
+
+# (not reqd?)    def calcOp_NumpyArray(self):
+# (not reqd?)       # gradient matrix
+# (not reqd?)       self.op=numpy.zeros(
+# (not reqd?)          [2*self.numberSubaps,self.numberPhases],numpy.float64)
+# (not reqd?)       for i in range(self.numberSubaps):
+# (not reqd?)          r=self.r(i)
+# (not reqd?)             # \/ grad x
+# (not reqd?)          self.op[i,r[0]]=-0.5
+# (not reqd?)          self.op[i,r[1]]=0.5
+# (not reqd?)          self.op[i,r[2]]=-0.5
+# (not reqd?)          self.op[i,r[3]]=0.5
+# (not reqd?)             # \/ self.grad y
+# (not reqd?)          self.op[i+self.numberSubaps,r[0]]=-0.5
+# (not reqd?)          self.op[i+self.numberSubaps,r[1]]=-0.5
+# (not reqd?)          self.op[i+self.numberSubaps,r[2]]=0.5
+# (not reqd?)          self.op[i+self.numberSubaps,r[3]]=0.5
+
+# (not reqd?)    def calcOp_scipyCSR(self):
+# (not reqd?)       import scipy.sparse # only required if we reach this stage
+# (not reqd?)       row,col=[],[] ; data=[]
+# (not reqd?)       for i in range(self.numberSubaps):
+# (not reqd?)          r=self.r(i)
+# (not reqd?)          for j in range(4): # x,y pairs
+# (not reqd?)             row.append(i)
+# (not reqd?)             col.append(r[j])
+# (not reqd?)             data.append( ((j%2)*2-1)*0.5 )
+# (not reqd?)             #
+# (not reqd?)             row.append(i+self.numberSubaps)
+# (not reqd?)             col.append(r[j])
+# (not reqd?)             data.append( (1-2*(j<2))*0.5 )
+# (not reqd?)          self.op=scipy.sparse.csr_matrix((data,(row,col)), dtype=numpy.float64)
 
 if __name__=="__main__":
    nfft=7 # pixel size
