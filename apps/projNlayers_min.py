@@ -6,12 +6,18 @@ import numpy
 import Zernike
 import projection
 import matplotlib.pyplot as pg
-import commonSeed
 
 nAzi=5
 mask=Zernike.anyZernike(1,8,4,ongrid=1)-Zernike.anyZernike(1,8,1,ongrid=1)
 mask=mask.astype(numpy.int32)
 nMask=int(mask.sum())
+setSeed=False
+useRandomIp=False
+
+# ---------
+
+if setSeed:
+   import commonSeed
 
 # angle, 5/20e3 is ~50'' which is ~CANARY 1
 # [0,1e3,5e3,10e3,15e3],
@@ -25,7 +31,7 @@ if not okay:
    raise ValueError("Eek!")
 
 actualGeometry=projection.projection(
- [0,1e3,5e3,10e3,15e3],
+ [0,5e3,15e3],
 # numpy.linspace(0,20e3,12),
  numpy.ones(5)*5/20.0e3,\
  numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask )
@@ -44,19 +50,22 @@ sumLayerExM=numpy.dot( sumPrM, layerExM.take(reconTrimIdx,axis=1) )
 #weights=[1,0.2,0.2,0.5,0.5,0.2,0.2]
 weights=numpy.random.uniform(0,1,size=12)
 
-import kolmogorov
-#inputData=[
-#   numpy.random.uniform(-1,1,size=tS) for tS in actualGeometry.layerNpix ]
 print("Input data...",end="")
-
+import kolmogorov
 inputData=[]
 for i in range(actualGeometry.nLayers):
    tS=actualGeometry.layerNpix[i]
-   thisData=kolmogorov.TwoScreens(tS.max()*2,(nMask**0.5)/2.0)[0][:tS[0],:tS[1]]
+   if useRandomIp:
+      thisData=numpy.random.uniform(-1,1,size=tS)
+   else:
+      thisData=kolmogorov.TwoScreens(
+            tS.max()*2,(nMask**0.5)/2.0)[0][:tS[0],:tS[1]]
    inputData.append(
       2*(thisData-thisData.mean())/(thisData.max()-thisData.min()) )
 #   if i!=0: inputData[-1]*=0 # artificially null layers other than the nth
 print("(done)")
+
+
 for i in range(len(inputData)):
    inputData[i]*=weights[i]
 inputDataA=[

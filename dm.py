@@ -13,17 +13,19 @@ class dm(object):
          +numpy.cos(ang/180.*numpy.pi)*(x_y[1]-self.npix[1]/2.)+self.npix[1]/2. 
          )
 
-   def __init__(self, shape, actGeom, rotation=0, within=0, ifScl=1,
+   def __init__(self, shape, actGeom, mask=None, rotation=0, within=0, ifScl=1,
          lateralScl=[1,1], lateralOffset=[0,0]):
-      '''npix is the sampling for the DM surface
-         actGeom represents the actuator geometry
-         rotation is in degrees
-         within is whether to let influence functions go over the edge
-         ifScl is the scaling factor for the influence fn width
-         lateralScl is actuator spacing along axes relative to the actuator
-            grid, not the output axes.
-         lateralOffset is a relative factor of actuator spacing for shifting the
-            actuator grid.
+      '''npix (i) : is the sampling for the DM surface,
+         actGeom (i,i) : represents the actuator geometry,
+         mask [bool;array;2D] : the pupil mask, so can calculate which 
+             actuators have a signifcant effect, in the sampling geometry,
+         rotation (f) : degrees,
+         within (b) : whether to let influence functions go over the edge,
+         ifScl (f) : scaling factor for the influence fn width,
+         lateralScl (f,f) : actuator spacing along axes relative to the
+            actuator grid, not the output axes,
+         lateralOffset (f,f) : is a relative factor of actuator spacing for
+            shifting the actuator grid.
       '''
       self.npix=shape
       self.actGeom=actGeom
@@ -31,6 +33,7 @@ class dm(object):
       self.rotation=rotation
       self.within=within
       self.ifScl=ifScl
+      self.mask=mask
       self.lateralScl=lateralScl
       self.lateralOffset=lateralOffset
 
@@ -44,18 +47,26 @@ class dm(object):
 
    def coords(self):
       self.actCds=[]
+      if type(self.mask)!=type(None): self.usable=[]
 #      offset=[ (
 #            self.actGeom[i]+(self.within!=0)-1)/2. for i in (0,1)]
       self.actspacing=[ self.lateralScl[i]*self.npix[i]/float(
                self.actGeom[i]+(self.within!=0)) for i in (0,1) ]
       for i in range(self.nacts):
-         (x,y)=( i//self.actGeom[1]-(self.actGeom[1]-1)/2.0-self.lateralOffset[1],
-                i%self.actGeom[0]-(self.actGeom[0]-1)/2.0-self.lateralOffset[0] )
-         self.actCds.append([ x*self.actspacing[0]+self.npix[0]/2.,
-               y*self.actspacing[1]+self.npix[1]/2. ])
+         (x,y)=(
+            i//self.actGeom[1]-(self.actGeom[1]-1)/2.0-self.lateralOffset[1],
+             i%self.actGeom[0]-(self.actGeom[0]-1)/2.0-self.lateralOffset[0] )
+         (xC,yC)=[ x*self.actspacing[0]+(self.npix[0])/2.,
+                   y*self.actspacing[1]+(self.npix[1])/2. ]
+         self.actCds.append((xC,yC))
+         if type(self.mask)!=type(None):
+            self.usable.append(
+              self.mask[int(yC-0.5),int(xC-0.5)])
       if self.rotation!=0:
          for i in range(self.nacts):
             self.actCds[i]=self.rotator(self.actCds[i],self.rotation)
+
+      self.usableIdx=numpy.flatnonzero(numpy.array(self.usable))
 
    def influenceFns(self):
       '''Influence functions, for input of 1'''
@@ -82,8 +93,6 @@ class dm(object):
          return self.returnInfFn(actnum)
 
 if __name__=="__main__":
-   import Zernike
-#   import projection
    import matplotlib.pyplot as pg
    import commonSeed
    import gradientOperator
@@ -91,8 +100,6 @@ if __name__=="__main__":
 
    nfft=32
 
-   #mask=(Zernike.anyZernike(1,nfft,nfft/2,ongrid=1)
-   #   -Zernike.anyZernike(1,nfft,nfft/8,ongrid=1))
    mask=numpy.ones([nfft]*2)
    mask=mask.astype(numpy.int32)
    nMask=int(mask.sum())

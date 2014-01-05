@@ -11,14 +11,9 @@ rotateVectors=lambda grads : numpy.array(
    [ grads[:grads.shape[0]/2]*2**-0.5+grads[grads.shape[0]/2:]*2**-0.5, 
      grads[:grads.shape[0]/2]*-2**-0.5+grads[grads.shape[0]/2:]*2**-0.5 ])
 
-class counter(object):
-  n=0
-  def cb(self,ip):
-    self.n+=1
-
-def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
-   chains=[]
-      # \/ define the chains
+def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
+   smmtns=[]
+      # \/ define the summations
       # Let the 1st method be to zip through the subaperture index into the
       # pupil mask and find which sub-aperture corners are in the
       # mask2allcorners and that this element is the bottom-left (thus there
@@ -26,10 +21,10 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
       # Let the 2nd method be similar but mask2allcorners+n_ (top left).
    N=gInst.n_ # alias
    blank=numpy.zeros([2]+N)
-   chainsNumber=0
+   smmtnsNumber=0
    chaninsStrtNum=0
-   chainsDef=[],[]
-   chainsStarts=[ ([],[],[]), ([],[],[]), 0]
+   smmtnsDef=[],[]
+   smmtnsStarts=[ ([],[],[]), ([],[],[]), 0]
    insubap=False
    for i in range(N[1]+N[0]-1):
       # top left, upwards right
@@ -37,15 +32,15 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
       x=int(numpy.where( i-N[0]+1<0, 0, i-N[0]+1 ))
       end=int(numpy.where( N[0]-y<N[1]-x, N[0]-y, N[1]-x ))
       if insubap:
-         # terminate chain
-         chainsDef[0].append( newChain )
+         # terminate summation
+         smmtnsDef[0].append( newSummation )
       insubap=False
       for j in range(end):
          thisIdx=y*N[1]+x+j*(N[0]+1)
          if insubap:
             forceTerminate=False
             if type(None)!=type(maxLen):  # terminate if too long
-               if maxLen==newChain[1]:
+               if maxLen==newSummation[1]:
                   forceTerminate=True
             if type(None)!=type(boundary) and type(None)!=type(boundary[0]):
                # terminate if reached a boundary
@@ -65,18 +60,18 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
                   thisIdx%N[0]<N[1]-1 and
                   gInst.subapMask[thisIdx//N[1],thisIdx%N[0]]!=0
                   ) and not forceTerminate:
-               # continue chain
-               newChain[0].append( thisIdx ) ; newChain[1]+=1
+               # continue summation 
+               newSummation[0].append( thisIdx ) ; newSummation[1]+=1
             elif thisIdx in gInst.illuminatedCornersIdx:
-               # must terminate chain but include this point
-               if not (forceTerminate and shortChains):
-                  newChain[0].append( thisIdx ) ; newChain[1]+=1
+               # must terminate summation but include this point
+               if not (forceTerminate and shortSmmtns):
+                  newSummation[0].append( thisIdx ) ; newSummation[1]+=1
                insubap=False
-               chainsDef[0].append( newChain )
+               smmtnsDef[0].append( newSummation )
             else:
-               # terminate chain
+               # terminate summation 
                insubap=False
-               chainsDef[0].append( newChain )
+               smmtnsDef[0].append( newSummation )
          if not insubap:
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
@@ -85,18 +80,18 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
                   thisIdx%N[0]<N[1]-1 and
                   gInst.subapMask[thisIdx//N[1],thisIdx%N[0]]!=0
                   ):
-               # start chain
-               chainsNumber+=1
+               # start summation 
+               smmtnsNumber+=1
                insubap=True
-               newChain=[[thisIdx],1, int(chainsNumber)]
+               newSummation=[[thisIdx],1, int(smmtnsNumber)]
          
                # \/ will always be a new entry
-               if thisIdx in chainsStarts[0][1]:
+               if thisIdx in smmtnsStarts[0][1]:
                   # so this should never happen
                   raise ValueError("Gone bonkers")
-               chainsStarts[0][0].append(chainsNumber)
-               chainsStarts[0][1].append(thisIdx)
-               chainsStarts[0][2].append(chaninsStrtNum)
+               smmtnsStarts[0][0].append(smmtnsNumber)
+               smmtnsStarts[0][1].append(thisIdx)
+               smmtnsStarts[0][2].append(chaninsStrtNum)
                chaninsStrtNum+=1
 
    for i in range(N[1]+N[0]-1):
@@ -105,15 +100,15 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
       x=int(numpy.where( N[0]-i-1>0, N[1]-1, N[1]-1+N[0]-i-1 ))
       end=int(numpy.where( N[0]-y<=x, N[0]-y, x+1 ))
       if insubap:
-         # terminate chain
-         chainsDef[1].append( newChain )
+         # terminate summation 
+         smmtnsDef[1].append( newSummation )
       insubap=False
       for j in range(end):
          thisIdx=y*N[1]+x+j*(N[0]-1)
          if insubap:
             forceTerminate=False
             if type(None)!=type(maxLen):
-               if maxLen==newChain[1]:
+               if maxLen==newSummation[1]:
                   forceTerminate=True
             if type(None)!=type(boundary) and type(None)!=type(boundary[1]):
                # terminate if reached a boundary
@@ -133,18 +128,18 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
                   ((thisIdx%N[0]<(N[0]-1) and
                    gInst.subapMask[thisIdx//N[1],thisIdx%N[0]-1]!=0))
                   ) and not forceTerminate:
-               # continue chain
-               newChain[0].append( thisIdx ) ; newChain[1]+=1
+               # continue summation 
+               newSummation[0].append( thisIdx ) ; newSummation[1]+=1
             elif thisIdx in gInst.illuminatedCornersIdx:
-               # must terminate chain but include this point
-               if not (forceTerminate and shortChains):
-                  newChain[0].append( thisIdx ) ; newChain[1]+=1
+               # must terminate summation but include this point
+               if not (forceTerminate and shortSmmtns):
+                  newSummation[0].append( thisIdx ) ; newSummation[1]+=1
                insubap=False
-               chainsDef[1].append( newChain )
+               smmtnsDef[1].append( newSummation )
             else:
-               # terminate chain
+               # terminate summation 
                insubap=False
-               chainsDef[1].append( newChain )
+               smmtnsDef[1].append( newSummation )
          if not insubap:
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
@@ -154,183 +149,187 @@ def chainsDefine( gInst, maxLen=None, boundary=None, shortChains=False ):
                   and ((thisIdx%N[0]>(0) and
                    gInst.subapMask[thisIdx//N[1],(thisIdx%N[0])-1]!=0))
                   ):
-               # start chain
-               chainsNumber+=1
+               # start summation 
+               smmtnsNumber+=1
                insubap=True
-               newChain=[[thisIdx],1,int(chainsNumber)]
+               newSummation=[[thisIdx],1,int(smmtnsNumber)]
               
-               # \/ principle code to check overlaps of chains
-               if thisIdx in chainsStarts[0][1]:
+               # \/ principle code to check overlaps of summations
+               if thisIdx in smmtnsStarts[0][1]:
                   # have an overlap so direct there
-                  chainsStarts[1][2].append(
-                        chainsStarts[0][2][
-                           chainsStarts[0][1].index(thisIdx)
+                  smmtnsStarts[1][2].append(
+                        smmtnsStarts[0][2][
+                           smmtnsStarts[0][1].index(thisIdx)
                         ])
-               elif thisIdx in chainsStarts[1][1]:
+               elif thisIdx in smmtnsStarts[1][1]:
                   # should never happen
                   raise ValueError("Gone bonkers")
                else:
-                  chainsStarts[1][2].append(chaninsStrtNum)
+                  smmtnsStarts[1][2].append(chaninsStrtNum)
                   chaninsStrtNum+=1
                   
-               # \/ and store which chain we are talking about
-               chainsStarts[1][0].append(chainsNumber)
-               chainsStarts[1][1].append(thisIdx)
+               # \/ and store which summation we are talking about
+               smmtnsStarts[1][0].append(smmtnsNumber)
+               smmtnsStarts[1][1].append(thisIdx)
 
-   chainsStarts[-1]=chaninsStrtNum
-   return chainsNumber, chainsDef, chainsStarts
+   smmtnsStarts[-1]=chaninsStrtNum
+   return smmtnsNumber, smmtnsDef, smmtnsStarts
 
-def chainsMapping( chainsDef, gInst ):
-   chainsMap=([],[])
-   for i in range(len(chainsDef[0])):
+def smmtnsMapping( smmtnsDef, gInst ):
+   smmtnsMap=([],[])
+   for i in range(len(smmtnsDef[0])):
       tcM=[]
-      for j in range(chainsDef[0][i][1]-1): # never use first element, defined as zero 
-         tC=chainsDef[0][i][0][j] # chain index
+      for j in range(smmtnsDef[0][i][1]-1): # never use first element, defined as zero 
+         tC=smmtnsDef[0][i][0][j] # summation index
          tgC=(gInst.mask2allcorners==tC).nonzero()[0]  # index into gradient vector
          if type(tgC)==None or len(tgC)==0:
             raise ValueError("Failed to index gradient")
          if len(tgC)>1:
             raise ValueError("Conflict!")
          tcM.append(int(tgC))
-      chainsMap[0].append( tcM )
-   for i in range(len(chainsDef[1])):
+      smmtnsMap[0].append( tcM )
+   for i in range(len(smmtnsDef[1])):
       tcM=[]
-      for j in range(chainsDef[1][i][1]-1): # never use first element, defined as zero 
-         tC=chainsDef[1][i][0][j] # chain index
+      for j in range(smmtnsDef[1][i][1]-1): # never use first element, defined as zero 
+         tC=smmtnsDef[1][i][0][j] # summation index
          tgC=gInst.numberSubaps+(gInst.mask2allcorners==(tC-1)).nonzero()[0]
          if type(tgC)==None:
             raise ValueError("Failed to index gradient")
          if len(tgC)>1:
             raise ValueError("Conflict!")
          tcM.append(int(tgC))
-      chainsMap[1].append( tcM )
-   return chainsMap
+      smmtnsMap[1].append( tcM )
+   return smmtnsMap
 
-def chainsIntegrate( chainsDef, rgradV, chainsMap ):
-   chains=([],[])
+def smmtnsIntegrate( smmtnsDef, rgradV, smmtnsMap ):
+   smmtns=([],[])
    for j in (0,1):
-      for i in range(len(chainsDef[j])):
-         chains[j].append(numpy.array(
-               [0]+list(numpy.cumsum( rgradV.take(chainsMap[j][i])*2**0.5 )) ))
-   return chains
+      for i in range(len(smmtnsDef[j])):
+         smmtns[j].append(numpy.array(
+               [0]+list(numpy.cumsum( rgradV.take(smmtnsMap[j][i])*2**0.5 )) ))
+   return smmtns
 
-def chainsVectorize( chains ):
-   # \/ produce the chain vector and indexing into it
-   chainsV=[]
-   chainsVOffsets=[]
+def smmtnsVectorize( smmtns ):
+   # \/ produce the summation vector and indexing into it
+   smmtnsV=[]
+   smmtnsVOffsets=[]
    for dirn in (0,1):
-      for tchain in chains[dirn]:
-         chainsVOffsets.append( len(chainsV) )
-         chainsV+=tchain.tolist()
-   return numpy.array(chainsV), numpy.array(chainsVOffsets)
+      for tsmmtn in smmtns[dirn]:
+         smmtnsVOffsets.append( len(smmtnsV) )
+         smmtnsV+=tsmmtn.tolist()
+   return numpy.array(smmtnsV), numpy.array(smmtnsVOffsets)
 
-def chainsOverlaps( chainsDef, intermediate=1 ):
-   # Solution approach is: each chain has an offset, as does the orthogonal
-   # chain at the edge where they meet. The system can be pinned down by
-   # defining the chain values plus their offsets to be equal, or equivalently,
-   # their difference to be zero. Note that some pairs of overlapping 
-   # chains share offsets.  This latter fact constrains the reconstruction. 
+def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
+   # Solution approach is: each summation has an offset, as does the orthogonal
+   # summation at the edge where they meet. The system can be pinned down by
+   # defining the summation values plus their offsets to be equal, or
+   # equivalently, their difference to be zero. Note that some pairs of
+   # overlapping summations share offsets.  This latter fact constrains the
+   # reconstruction. 
    #
    # An alternative approach which can quash high-frequencies is to also
-   # overlap at chain intermediate points. This results in only one grid, not
-   # the usual 2 nested grids. The argument 'intermediate' adds this grid with
-   # the value being the scaling relative to the chain-offset grids.
-   # Thus very small values weight the chain-offset grids solution, whereas
-   # very large values weight the chain intermediate-grid solution.
-   chainsMatching=[]
+   # overlap at summation intermediate points. This results in only one grid,
+   # not the usual 2 nested grids. The argument 'intermediate' adds this grid
+   # with the value being the scaling relative to the summation-offset grids.
+   # Thus very small values weight the summation-offset grids solution, whereas
+   # very large values weight the summation intermediate-grid solution.
+   smmtnsMatching=[]
    overlap=0
-   for i in range(len(chainsDef[0])): # index the chains we want to align
-      for k in range(0, chainsDef[0][i][1], 1):
-            # /\ can choose which points along a chain to try and match
-         if ((chainsDef[0][i][0][k]//20)>10): # NEW
-            print("X",end=":")
-            continue
-         for j in range(len(chainsDef[1])): # index the orthogonal chains
-            for l in range(0, chainsDef[1][j][1], 1):
-               print((chainsDef[0][i][0][k]//20),end=",")
+   for i in range(len(smmtnsDef[0])): # index the summations we want to align
+      for k in range(0, smmtnsDef[0][i][1], 1):
+            # /\ can choose which points along a summation to try and match
+#(???) Not clear what the following lines try to do but they do introduce
+#(???) a significant bug
+#(???)         if ((smmtnsDef[0][i][0][k]//20)>10): # NEW
+#(???)#            print("X",end=":")
+#(???)            continue
+         for j in range(len(smmtnsDef[1])): # index the orthogonal summations 
+            for l in range(0, smmtnsDef[1][j][1], 1):
+#               print((smmtnsDef[0][i][0][k]//20),end=",")
 #               if not intermediate and\
-               if intermediate>0 and k<(chainsDef[0][i][1]-1) and\
-                     l<(chainsDef[1][j][1]-1) and\
-                     (chainsDef[0][i][0][k]==(chainsDef[1][j][0][l]-1) and
-                      chainsDef[0][i][0][k+1]==(chainsDef[1][j][0][l+1]+1)):
-         # \/ for each consecutive pair of elements in one set of chains, define
-         #   an intermediate point and find the matching intermediate points
-         #   from the in the other set of chains.
-#                  chainsMatching.append( (i,j,k,l,intermediate) )
-#                  chainsMatching.append( (i,j,k+1,l+1,intermediate) )
-                  chainsMatching.append([(i,j,k,l,intermediate)
+               if intermediate>0 and k<(smmtnsDef[0][i][1]-1) and\
+                     l<(smmtnsDef[1][j][1]-1) and\
+                     (smmtnsDef[0][i][0][k]==(smmtnsDef[1][j][0][l]-1) and
+                      smmtnsDef[0][i][0][k+1]==(smmtnsDef[1][j][0][l+1]+1)):
+         # \/ for each consecutive pair of elements in one set of summations,
+         #   define an intermediate point and find the matching intermediate
+         #   points from the in the other set of summations.
+#                  smmtnsMatching.append( (i,j,k,l,intermediate) )
+#                  smmtnsMatching.append( (i,j,k+1,l+1,intermediate) )
+                  smmtnsMatching.append([(i,j,k,l,intermediate)
                                         ,(i,j,k+1,l+1,intermediate)] )
-               if chainsDef[0][i][0][k]==chainsDef[1][j][0][l]:
-         # \/ for each point in one set of chains, find matching in
-         # the other
-                  chainsMatching.append( [(i,j,k,l,1)] )
+               if smmtnsDef[0][i][0][k]==smmtnsDef[1][j][0][l]:
+         # \/ for each point in one set of summations, find matching in the
+         #   other
+                  smmtnsMatching.append( [(i,j,k,l,1)] )
    # \/ nb There is an inefficiency here in so much that if i,j are already
    #  in one overlap i.e. intermediate>0, then it should be combined rather
    #  than added as a separate row.
-   return chainsMatching
+   return smmtnsMatching
 
-def chainsDefMatrices(chainsOvlps, chainsDef, chainsDefChStrts, gO=None,
+def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
       sparse=False):
    # If the problem is Ao+Bc=0, where o is the vector of offsets for the
-   # chains, which are essentially the currently undefined start value for each
-   # chain, and c is the vector of chain values (chainsV here), then A is the
-   # matrix which selects the appropriate offsets and B selects the appropriate
-   # chain differences which ought to be zero thus the equation.  ->
-   # o=A^{+}B(-c) where A^{+} is a pseudo-inverse. Or you can use the
-   # least-squares approach, o=(A^{T}A+{\alpha}I)^{-1}A^{T}B(-c) and standard
-   # matrix algebra works, as long as \alpha!=0 i.e. regularisation is applied.
+   # summations, which are essentially the currently undefined start value for
+   # each summation, and c is the vector of summationvalues (smmtnsV here),
+   # then A is the matrix which selects the appropriate offsets and B selects
+   # the appropriate summations differences which ought to be zero thus the
+   # equation.  -> o=A^{+}B(-c) where A^{+} is a pseudo-inverse. Or you can use
+   # the least-squares approach, o=(A^{T}A+{\alpha}I)^{-1}A^{T}B(-c) and
+   # standard matrix algebra works, as long as \alpha!=0 i.e. regularisation is
+   # applied.
 
-   # only need to consider unique offsets; some chains will start at the same
-   # point so that would overconstrain the matrix. 
-   avoidedRows=[] # record overlaps of chains with the same offset 
-   chainsLen=0
-   chainsVOffsets=[]
+   # only need to consider unique offsets; some summations will start at the
+   # same point so that would overconstrain the matrix. 
+   avoidedRows=[] # record overlaps of summations with the same offset 
+   smmtnsLen=0
+   smmtnsVOffsets=[]
    for dirn in (0,1):
-      for tcD in chainsDef[dirn]:
-         chainsVOffsets.append(chainsLen)
-         chainsLen+=tcD[1]
+      for tcD in smmtnsDef[dirn]:
+         smmtnsVOffsets.append(smmtnsLen)
+         smmtnsLen+=tcD[1]
    if not sparse: # define matrices first
-      A=numpy.zeros([ len(chainsOvlps), chainsDefChStrts[2] ], numpy.float32)
-      B=numpy.zeros([ len(chainsOvlps), chainsLen ], numpy.float32 )
+      A=numpy.zeros([ len(smmtnsOvlps), smmtnsDefChStrts[2] ], numpy.float32)
+      B=numpy.zeros([ len(smmtnsOvlps), smmtnsLen ], numpy.float32 )
    else:
       Aidx={'data':[], 'col':[] }
       Bidx={'data':[], 'col':[] }
       rowIdx=[]
-   for i in range(len(chainsOvlps)):
+   for i in range(len(smmtnsOvlps)):
          # *** the method assumes that every row is defined by each element
          # *** of the overlaps 
       #
-      for j in range(len(chainsOvlps[i])):
-         tcO=chainsOvlps[i][j]
+      for j in range(len(smmtnsOvlps[i])):
+         tcO=smmtnsOvlps[i][j]
 #      if tcO[1]==0 and tcO[0]==0: continue
-         tcCN=[ chainsDef[dirn][tcO[dirn]][2] for dirn in (0,1) ]
-         coI=[ chainsDefChStrts[dirn][0].index( tcCN[dirn] ) for dirn in (0,1) ]
-         if chainsDefChStrts[0][2][coI[0]]==chainsDefChStrts[1][2][coI[1]]:
-            avoidedRows.append([i,len(chainsOvlps[i])])
+         tcCN=[ smmtnsDef[dirn][tcO[dirn]][2] for dirn in (0,1) ]
+         coI=[ smmtnsDefChStrts[dirn][0].index( tcCN[dirn] ) for dirn in (0,1) ]
+         if smmtnsDefChStrts[0][2][coI[0]]==smmtnsDefChStrts[1][2][coI[1]]:
+            avoidedRows.append([i,len(smmtnsOvlps[i])])
 #            print("Avoiding row {0:d}".format(i))
             continue
          if not sparse: # fill in here
-            A[ i, chainsDefChStrts[0][2][coI[0]]]+=tcO[-1]
-            A[ i, chainsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
+            A[ i, smmtnsDefChStrts[0][2][coI[0]]]+=tcO[-1]
+            A[ i, smmtnsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
             #
-            B[ i, chainsVOffsets[chainsDef[0][tcO[0]][-1]-1]+tcO[2] ]+=tcO[-1]
-            B[ i, chainsVOffsets[chainsDef[1][tcO[1]][-1]-1]+tcO[3] ]+=-tcO[-1]
+            B[ i, smmtnsVOffsets[smmtnsDef[0][tcO[0]][-1]-1]+tcO[2] ]+=tcO[-1]
+            B[ i, smmtnsVOffsets[smmtnsDef[1][tcO[1]][-1]-1]+tcO[3] ]+=-tcO[-1]
          else:
             Aidx['data']+=[tcO[-1],-tcO[-1]]
-            Aidx['col']+=[ chainsDefChStrts[j][2][coI[j]] for j in (0,1) ]
+            Aidx['col']+=[ smmtnsDefChStrts[j][2][coI[j]] for j in (0,1) ]
             rowIdx+=[i-len(avoidedRows)]*2
             Bidx['data']+=[tcO[-1],-tcO[-1]]
-            Bidx['col']+=[ chainsVOffsets[chainsDef[j][tcO[j]][-1]-1]+tcO[2+j]
+            Bidx['col']+=[ smmtnsVOffsets[smmtnsDef[j][tcO[j]][-1]-1]+tcO[2+j]
                for j in (0,1) ]
 
    if sparse:
       import scipy.sparse
       A=scipy.sparse.csr_matrix( (Aidx['data'],(rowIdx,Aidx['col'])),
-            [ (len(chainsOvlps)-len(avoidedRows)), chainsDefChStrts[2] ], numpy.float32 )
+            [ (len(smmtnsOvlps)-len(avoidedRows)), smmtnsDefChStrts[2] ], numpy.float32 )
       B=scipy.sparse.csr_matrix( (Bidx['data'],(rowIdx,Bidx['col'])),
-            [ (len(chainsOvlps)-len(avoidedRows)), chainsLen ], numpy.float32)
+            [ (len(smmtnsOvlps)-len(avoidedRows)), smmtnsLen ], numpy.float32)
    else:
-      rowIndex=range(len(chainsOvlps))
+      rowIndex=range(len(smmtnsOvlps))
       for i in avoidedRows[::-1]: # in reverse order
          rowIndex.pop(i[0])
       A=A[rowIndex] ; B=B[rowIndex]
@@ -343,18 +342,19 @@ def chainsDefMatrices(chainsOvlps, chainsDef, chainsDefChStrts, gO=None,
 from scipy.sparse.linalg import cg as spcg
 from scipy.sparse import identity as spidentity
 
-def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False):
-   chainsNumber,chainsDef,chainsDefChStrts=\
-         chainsDefine( gO, maxLen=maxLen, boundary=boundary )
-   chainsOvlps=chainsOverlaps(chainsDef,overlapType)
-   chainsMap=chainsMapping(chainsDef,gO)
-   A,B=chainsDefMatrices(chainsOvlps, chainsDef, chainsDefChStrts, gO, sparse)
+def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
+      matrices=False):
+   smmtnsNumber,smmtnsDef,smmtnsDefChStrts=\
+         smmtnsDefine( gO, maxLen=maxLen, boundary=boundary )
+   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,overlapType)
+   smmtnsMap=smmtnsMapping(smmtnsDef,gO)
+   A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO, sparse)
 #   geometry=numpy.zeros(gO.n_,numpy.float32)
-#   for tcDCS in chainsDefChStrts[:-1]:
+#   for tcDCS in smmtnsDefChStrts[:-1]:
 #       for x in range(len(tcDCS[1])):
 #         geometry.ravel()[tcDCS[1][x]]=1   
 #   mappingM=numpy.zeros([geometry.sum()]*2, numpy.float32)
-#   for tcDCS in chainsDefChStrts[:-1]:
+#   for tcDCS in smmtnsDefChStrts[:-1]:
 #       for x in range(len(tcDCS[1])):
 #         mappingM[ geometry.ravel().nonzero()[0].searchsorted(tcDCS[1][x]),
 #                  tcDCS[2][x] ]=1
@@ -373,18 +373,24 @@ def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False):
       #offsetEstM=numpy.dot( numpy.linalg.pinv( A, rcond=0.1 ), -B )
       #offsetEstM=numpy.dot( numpy.dot(
       #      numpy.linalg.inv( numpy.dot( A.T,A )+lTlM*1e-2 ), A.T ), -B )
-      offsetEstM=numpy.dot( numpy.dot(
-            numpy.linalg.inv( numpy.dot( A.T,A )
-           +numpy.identity(A.shape[1])*1e-2 ), A.T ), -B )
+      if matrices:
+         offsetEstM=(A,B)
+      else:
+         offsetEstM=numpy.dot( numpy.dot(
+               numpy.linalg.inv( numpy.dot( A.T,A )
+              +numpy.identity(A.shape[1])*1e-2 ), A.T ), -B )
    else:
-      ATA=A.transpose().tocsr().dot(A) ; ATB=A.transpose().tocsr().dot(B)
-      ATA=ATA+spidentity(chainsDefChStrts[2],'d','csr')*1e-2
-# >      ATA=ATA+scipy.sparse.csr_matrix(
-# >            (1e-2*numpy.ones(len(chainsOvlps)),
-# >             range(len(chainsOvlps)), range(len(chainsOvlps)+1) ) )
-      offsetEstM=( ATA, ATB ) # return as a tuple for CG algorithm to use
+      if matrices:
+         offsetEstM=(A,B)
+      else:
+         ATA=A.transpose().tocsr().dot(A) ; ATB=A.transpose().tocsr().dot(-B)
+         ATA=ATA+spidentity(smmtnsDefChStrts[2],'d','csr')*1e-2
+   # >      ATA=ATA+scipy.sparse.csr_matrix(
+   # >            (1e-2*numpy.ones(len(smmtnsOvlps)),
+   # >             range(len(smmtnsOvlps)), range(len(smmtnsOvlps)+1) ) )
+         offsetEstM=( ATA, ATB ) # return as a tuple for CG algorithm to use
    #
-   return(chainsDef,chainsDefChStrts,chainsMap,offsetEstM)
+   return(smmtnsDef,smmtnsDefChStrts,smmtnsMap,offsetEstM)
 
 def localWaffle(x,gO):
   mask=numpy.ones(gO.numberPhases)
@@ -428,11 +434,11 @@ def localPiston(x,gO):
   localPiston[1]=len(maskI)**-0.5
   return localPiston
 
-def doHWROnePoke(gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,chainsMap,
+def doHWROnePoke(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
       thisAct,doWaffleReduction=1,doPistonReduction=1):
 #   comp,numbers,ts=doHWRIntegration(
    comp,numbers=doHWRIntegration(
-         gradsV, chainsDef, gO, offsetEstM, chainsDefChStrts,chainsMap )
+         gradsV, smmtnsDef, gO, offsetEstM, smmtnsDefChStrts,smmtnsMap )
    #
    hwrV=((comp[0]+comp[1])*(numbers+1e-9)**-1.0
             ).ravel()[gO.illuminatedCornersIdx]
@@ -447,65 +453,133 @@ def doHWROnePoke(gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,chainsMap,
    return comp,hwrV#,numpy.array(ts)[1:]-ts[0]
 
 #import time
-def doHWRIntegration(gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,
-      chainsMap,sparse=False):
+def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
+      smmtnsMap,sparse=False):
    rgradV=rotateVectors(gradsV).ravel()
-   chains=chainsIntegrate(chainsDef,rgradV,chainsMap)
-   chainsV,chainsVOffsets=chainsVectorize(chains)
-#*   print("** len[chainsV,chainsVoffsets]=[{0:d},{1:d}]".format(
-#*         len(chainsV),len(chainsVOffsets)))
-#*   print("** len[chains[0],chains[1]]=[{0:d},{1:d}]".format(
-#*         len(chains[0]),len(chains[1])))
+   smmtns=smmtnsIntegrate(smmtnsDef,rgradV,smmtnsMap)
+   smmtnsV,smmtnsVOffsets=smmtnsVectorize(smmtns)
+#*   print("** len[smmtnsV,smmtnsVoffsets]=[{0:d},{1:d}]".format(
+#*         len(smmtnsV),len(smmtnsVOffsets)))
+#*   print("** len[smmtns[0],smmtns[1]]=[{0:d},{1:d}]".format(
+#*         len(smmtns[0]),len(smmtns[1])))
    if not sparse:
-      offsetEstV=numpy.dot( offsetEstM, chainsV )
+      offsetEstV=numpy.dot( offsetEstM, smmtnsV )
    else:
-      offsetEstV=spcg( offsetEstM[0], offsetEstM[1].dot(chainsV) )
+      offsetEstV=spcg( offsetEstM[0], offsetEstM[1].dot(smmtnsV) )
       if offsetEstV[1]==0:
          offsetEstV=offsetEstV[0]
       else:
          raise ValueError("Sparse CG did not converge")
    
-   chainsV=doHWRChainsAddOffsets(
-         chains,chainsV,chainsVOffsets,chainsDef,chainsDefChStrts,offsetEstV)
+   smmtnsV=doHWRSmmtnsAddOffsets(
+         smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,smmtnsDefChStrts,offsetEstV)
    
-   return doHWRChainsFormatToConventional(
-         gO,chains,chainsDef,chainsV,chainsVOffsets)
+   return doHWRSmmtnsFormatToConventional(
+         gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets),(smmtnsV,smmtnsVOffsets)
 
-def doHWRChainsAddOffsets(chains,chainsV,chainsVOffsets,chainsDef,
-      chainsDefChStrts,offsetEstV):
+def doHWRSmmtnsAddOffsets(smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,
+      smmtnsDefChStrts,offsetEstV):
    #      
    # do one way...
-   for x in range(len(chains[0])):
+   for x in range(len(smmtns[0])):
       toeI=x
-      chainsV[chainsVOffsets[x]:chainsVOffsets[x]+chainsDef[0][x][1]]+=\
+      smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]+=\
             offsetEstV[toeI]
    # ...then the other
-   for x in range(len(chains[1])):
-      toeI=chainsDefChStrts[1][2][x]
-      chainsV[chainsVOffsets[x+len(chains[0])]:
-              chainsVOffsets[x+len(chains[0])]+chainsDef[1][x][1]]+=\
+   for x in range(len(smmtns[1])):
+      toeI=smmtnsDefChStrts[1][2][x]
+      smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:
+              smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]+=\
             offsetEstV[toeI]
-   return chainsV
+   return smmtnsV
 
-def doHWRChainsFormatToConventional(
-      gO,chains,chainsDef,chainsV,chainsVOffsets):
+def doHWRSmmtnsFormatToConventional(gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets):
+   '''Create a 2D version of the summations, separate for each chain.'''
    comp=numpy.zeros([2,gO.n_[0]*gO.n_[1]], numpy.float64)
    numbers=numpy.zeros([gO.n_[0]*gO.n_[1]], numpy.float64)
-   for x in range(len(chains[0])):
-      comp[0][ chainsDef[0][x][0] ]=\
-         chainsV[chainsVOffsets[x]:chainsVOffsets[x]+chainsDef[0][x][1]]
-      numbers[ chainsDef[0][x][0] ]+=1
-   for x in range(len(chains[1])):
-      comp[1][ chainsDef[1][x][0] ]=\
-         chainsV[chainsVOffsets[x+len(chains[0])]:\
-                 chainsVOffsets[x+len(chains[0])]+chainsDef[1][x][1]]
-      numbers[ chainsDef[1][x][0] ]+=1
+   for x in range(len(smmtns[0])):
+      comp[0][ smmtnsDef[0][x][0] ]=\
+         smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]
+      numbers[ smmtnsDef[0][x][0] ]+=1
+   for x in range(len(smmtns[1])):
+      comp[1][ smmtnsDef[1][x][0] ]=\
+         smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:\
+                 smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]
+      numbers[ smmtnsDef[1][x][0] ]+=1
    return comp,numbers
 
-def doHWRGeneral(gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,chainsMap,
-      doWaffleReduction=1,doPistonReduction=1,sparse=False):
-   comp,numbers=doHWRIntegration( gradsV, chainsDef, gO, offsetEstM,
-         chainsDefChStrts, chainsMap, sparse )
+def gradientsManagement(gradsV,gO,f=3,verbose=False):
+   """Analyse the gradients and examine if any exceed the expected variance
+      by the specified factor. If they do, then replace the gradient with
+      the interpolation/copy of its neighbours/the neighbour depending
+      on if the gradient is from the middle/edge of the sub-aperture
+      array.  Split the problem into two dimensions, first one-half and then
+      the other.
+      gradsV: the gradients, as a vector with the first half being
+         one-direction, the second half containing the other direction,
+      gO: gradient operator type 1 object,
+      f: std deviation limit for gradient rejection.
+      verbose: print out information on what was done
+   """
+   ngradsOneDirn=len(gradsV)//2
+   assert ngradsOneDirn*2==len(gradsV),\
+         "i/p vector not a multiple of 2, wrong shape"
+   for dirn in (0,1):
+      gradientOffsetI=dirn*ngradsOneDirn
+      tgradsV=gradsV[gradientOffsetI:gradientOffsetI+ngradsOneDirn]
+      tgradsVlim=f*(tgradsV.var())**0.5
+      idx=numpy.flatnonzero(abs(tgradsV)>tgradsVlim)
+      if len(idx)<1: continue # nothing to be done, skip
+      # Now have indices of which gradients are excessive.
+      # Calculate for which row/column this excess occurs and then
+      # interpolate/extrapolate.
+      lineNos=numpy.unique( numpy.where(dirn,
+            gO.subapMaskIdx//gO.n[0],gO.subapMaskIdx%gO.n[0]) )
+      for lineNo in lineNos:
+         lineIdx=numpy.flatnonzero( numpy.where(dirn,
+               gO.subapMaskIdx//gO.n[0],gO.subapMaskIdx%gO.n[0])==lineNo )
+         lineValidIdx=numpy.lib.setdiff1d(lineIdx,idx)
+         if len(lineValidIdx)==len(lineIdx): continue # nothing to be done, skip
+         lineValidCds=numpy.searchsorted(lineIdx,lineValidIdx)
+            # \/ do the replacement
+         if verbose:
+            print( ("{2:s}={3:d}, replacing {0:3d}%/{1:d} gradients from:\n\t"
+                  +str(tgradsV[lineIdx])).format(
+                     int(100*(1-len(lineValidIdx)*len(lineIdx)**-1.0)),
+                     len(lineIdx)-len(lineValidIdx),
+                     (dirn)*"col"+(1-dirn)*"row",
+                     lineNo+1
+                  )) 
+         tgradsV[lineIdx]=numpy.interp( range(len(lineIdx)),
+               lineValidCds,tgradsV[lineValidIdx])
+         if verbose:
+            print(" to:\n\t"+str(tgradsV[lineIdx]))
+
+   # NOTA BENE: in principle, the following two lines are irrelevant since
+   # earlier tgradsV is a view into gradsV and (I'm not sure how) gradsV
+   # is also a view into the argument: thus changes are made in-place.
+   # However, the following makes it explicit.
+      gradsV[gradientOffsetI:gradientOffsetI+ngradsOneDirn]=tgradsV # **
+   return gradsV                                                       # **
+
+def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
+      doWaffleReduction=0,doPistonReduction=1,doGradientMgmnt=0,sparse=False):
+   '''gradsV: the input gradients as a vector, first one-direction and then
+         the remainder,
+      smmtnsDef: definitions of summations,
+      gO: gradient operator type 1 object,
+      offsetEstM: offset estimation matrices,
+      smmtnsDefChStrts: definitions of summation overlaps,
+      smmtnsMap: definitions of summations 2D<->1D geometry relationship,
+      doWaffleReduction: apply subsequent waffle reduction,
+      doPistonReduction: apply subsequent piston reduction,
+      doGradientMgmnt: apply gradient management to eliminate atypical values,
+      sparse: use sparse matrices, best for problems > 1000 gradients.
+   '''
+   if doGradientMgmnt: gradsV=gradientsManagement(gradsV,gO)
+   (comp,numbers),(smmtnsV,smmtnsVOffsets)=\
+         doHWRIntegration( gradsV, smmtnsDef, gO, offsetEstM, smmtnsDefChStrts,
+               smmtnsMap, sparse )
    #
    hwrV=((comp[0]+comp[1])*(numbers+1e-9)**-1.0
             ).ravel()[gO.illuminatedCornersIdx]
@@ -516,32 +590,32 @@ def doHWRGeneral(gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,chainsMap,
       globalPV=localPiston(-1,gO)
       hwrV-=numpy.dot( globalPV[1], hwrV )*globalPV[1]
    #
-   return comp,hwrV
+   return comp,hwrV,(smmtnsV,smmtnsVOffsets)
 # --begin--
 
 if __name__=="__main__":
 
    import pdb # Python debugger
    import abbot.phaseCovariance
-   import gradNoise_Fried
+   import abbot.continuity
    import time
    import matplotlib.pyplot as pyp, numpy.ma as ma
 
 # \/ configuration here_______________________ 
-   N=[20,0] ; N[1]=(N[0]*6)//39. # size
+   N=[80,0] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=4*r0#N[0]/3.0
-   noDirectInv=False # if true, don't attempt MMSE
+   noDirectInv=1#False # if true, don't attempt MMSE
    doSparse=0
-   chainPeriodicBound=[8,N[0]+1][0]# optional 
-   chainMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=5e-1 # multiplier of gradient noise
-   chainOvlpType=0.01     # 0=direct x-over, 1=intermediate x-over
+   smmtnPeriodicBound=[None,16,8,4,N[0]+1][3]# optional 
+   smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
+   gradNoiseVarScal=0.5#5e-1 # multiplier of gradient noise
+   smmtnOvlpType=0.0    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
-   dopinv=True#False 
-   doShortChains=False # True means do not include chain bounday truncation overlaps
-   disableNoiseReduction=True#False
-   contLoopBoundaries=[ N[0]+1, chainPeriodicBound ][0]
+   dopinv=False 
+   doShortSmmtns=False # True means do not include summation bounday truncation overlaps
+   disableNoiseReduction=1#False
+   contLoopBoundaries=[ N[0]+1, smmtnPeriodicBound ][1]
    laplacianSmoother=1e-9
    fractionalZeroingoeM=0 # always keep this as zero 
       # (fraction of max{offsetEstM} below which to zero)
@@ -560,19 +634,25 @@ if __name__=="__main__":
       if "contLoopBoundaries" not in dir():
          contLoopBoundariesicBound=N[0]+1
    print(" gradNoiseVarScal={0:3.1f}".format(gradNoiseVarScal)) 
-   print(" chainPeriodicBound={0:s}".format(
-         str(numpy.where(chainPeriodicBound!=None,chainPeriodicBound,"")) ))
+   print(" smmtnPeriodicBound={0:s}".format(
+         str(numpy.where(smmtnPeriodicBound!=None,smmtnPeriodicBound,"")) ))
    print(" contLoopBoundaries={0:s}".format(
          str(numpy.where(contLoopBoundaries!=None,contLoopBoundaries,"")) ))
-   print(" chainMaxLength={0:s}".format(
-         str(numpy.where(chainMaxLength!=None,chainMaxLength,"")) ))
+   print(" smmtnMaxLength={0:s}".format(
+         str(numpy.where(smmtnMaxLength!=None,smmtnMaxLength,"")) ))
    print(" noiseReduction={0:d}".format(noiseReduction>0)) 
-   print(" chainOvlpType={0:5.3f}".format(chainOvlpType)) 
+   print(" smmtnOvlpType={0:5.3f}".format(smmtnOvlpType)) 
    print(" N={0:d}".format(N[0])) 
    print(" r0={0:d}, L0={1:d}".format(int(r0),int(L0)))
    print(" doSparse={0:d}".format(doSparse>0)) 
    print(" noDirectInv={0:d}".format(noDirectInv>0)) 
    print(" dopinv={0:d}".format(dopinv>0)) 
+
+   if doSparse:
+      class counter(object):
+        n=0
+        def cb(self,ip):
+          self.n+=1
 
    cds=numpy.add.outer(
          (numpy.arange(N[0])-(N[0]-1)/2.)**2.0, 
@@ -595,6 +675,7 @@ if __name__=="__main__":
    ts=time.time()
    gInst=abbot.gradientOperator.gradientOperatorType1(
       pupilMask=pupAp, sparse=doSparse )
+#   sam=numpy.load("/tmp/tmp3");gInst=abbot.gradientOperator.gradientOperatorType1(sam )
 #?? # \/ CANARY sub-aperture mask
 #??    print("**NB** Using CANARY sub-aperture mask")
 #??    N=[8,8]
@@ -610,14 +691,14 @@ if __name__=="__main__":
    if noiseReduction:
       ts=time.time()
       print("noise reduction: defn...",end="") ; sys.stdout.flush()
-      loopsDef=gradNoise_Fried.loopsDefine( gInst, contLoopBoundaries ) 
-      loopIntM=gradNoise_Fried.loopsIntegrationMatrix(
+      loopsDef=abbot.continuity.loopsDefine( gInst, contLoopBoundaries ) 
+      loopIntM=abbot.continuity.loopsIntegrationMatrix(
             loopsDef, gInst, doSparse) 
       print("({0:3.1f}s)...inversion...".format(time.time()-ts),end="")
       ts=time.time()
       sys.stdout.flush()
       noiseExtM,noiseReductionM=\
-            gradNoise_Fried.loopsNoiseMatrices( loopIntM, gInst )
+            abbot.continuity.loopsNoiseMatrices( loopIntM, gInst )
 #      # \/ sparsify
 #      if nrSparsifyFrac!=0:
 #         maxInM=abs(noiseExtM).max()
@@ -630,6 +711,13 @@ if __name__=="__main__":
       print("({0:3.1f}s, done)".format(time.time()-ts),end="")
       sys.stdout.flush()
    
+   print("N,N_={0:d},{1:d}".format(gInst.n[0],gInst.n_[0]))
+   #x=gInst.illuminatedCornersIdx%gInst.n_[0]
+   #y=gInst.illuminatedCornersIdx//gInst.n_[0]
+#   wl=8.0;ip=numpy.cos(2*numpy.pi*wl**-1.0*(x+y)*2**0.5)
+   #ip=x
+   #ip=numpy.zeros(len(x)) ; ip[int(numpy.random.uniform(0,len(x)))]=1
+   #rdm=ip
    rdm=numpy.random.normal(size=gInst.numberPhases) # what to reconstruct
    #rdm=numpy.add.outer(numpy.arange(N[0]),(N[0]-1)*0+(0)*numpy.arange(N[0])).ravel().take(
    #   gInst.illuminatedCornersIdx ) # 45deg slope
@@ -650,17 +738,17 @@ if __name__=="__main__":
 
    # ----> begins ---->
 
-   print("chainsDefine...",end="") ; sys.stdout.flush()
+   print("smmtnsDefine...",end="") ; sys.stdout.flush()
    ts=time.time()
-   chainsNumber,chainsDef,chainsDefChStrts=chainsDefine(\
-         gInst, boundary=[chainPeriodicBound]*2, maxLen=chainMaxLength,
-         shortChains=doShortChains )
+   smmtnsNumber,smmtnsDef,smmtnsDefChStrts=smmtnsDefine(\
+         gInst, boundary=[smmtnPeriodicBound]*2, maxLen=smmtnMaxLength,
+         shortSmmtns=doShortSmmtns )
    print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
 
-   if not doSparse:
-      gradV=numpy.dot(gO, rdm)
-   else:
-      gradV=gO.dot(rdm)
+#   if not doSparse:
+#      gradV=numpy.dot(gO, rdm)
+#   else:
+   gradV=gO.dot(rdm)
    print("...add noise",end="") ; sys.stdout.flush()
    if gradNoiseVarScal>0:
       gradV+=numpy.random.normal(
@@ -676,28 +764,28 @@ if __name__=="__main__":
 
    print("mapping...",end="") ; sys.stdout.flush()
    ts=time.time()
-   chainsMap=chainsMapping(chainsDef,gInst)
+   smmtnsMap=smmtnsMapping(smmtnsDef,gInst)
    print("(done, {0:3.1f})".format(time.time()-ts)) ; sys.stdout.flush()
    print("integrate...",end="") ; sys.stdout.flush()
    ts=time.time()
-   chains=chainsIntegrate(chainsDef,rgradV,chainsMap)
+   smmtns=smmtnsIntegrate(smmtnsDef,rgradV,smmtnsMap)
    print("(done, {0:3.1f})".format(time.time()-ts)) ; sys.stdout.flush()
    print("vectorize...",end="") ; sys.stdout.flush()
-   chainsV,chainsVOffsets=chainsVectorize(chains)
+   smmtnsV,smmtnsVOffsets=smmtnsVectorize(smmtns)
    print("(done)") ; sys.stdout.flush()
 
    print("overlaps...",end="") ; sys.stdout.flush()
    ts=time.time()
-   chainsOvlps=chainsOverlaps(chainsDef,chainOvlpType)
+   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,smmtnOvlpType)
    print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
 
    print("matrices...",end="") ; sys.stdout.flush()
-   A,B=chainsDefMatrices(chainsOvlps, chainsDef, chainsDefChStrts,
+   A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
          sparse=doSparse)
    print("(done)") ; sys.stdout.flush()
 
    if not doSparse:
-      print("inversion.",end="") ; sys.stdout.flush()
+      print("(A^T.A)^-1.A^T.B; inversion.",end="") ; sys.stdout.flush()
 #      zeroRows=(abs(A).sum(axis=1)==0).nonzero()[0]
 #      if len(zeroRows)>0:
 #         nonzeroRows=(abs(A).sum(axis=1)!=0).nonzero()[0]
@@ -706,7 +794,7 @@ if __name__=="__main__":
 #         print("** REMOVING ROWS FROM A,B:"+str(zeroRows))
       #offsetEstM=numpy.dot( numpy.linalg.pinv( A, rcond=0.1 ), -B )
 #      pupApStartsOnly=numpy.zeros(pupAp.shape)
-#      pupApStartsOnly.ravel()[chainsDefChStrts[0][1]+chainsDefChStrts[1][1]]=1
+#      pupApStartsOnly.ravel()[smmtnsDefChStrts[0][1]+smmtnsDefChStrts[1][1]]=1
       print(".",end="") ; sys.stdout.flush()
 #      chOScovM=abbot.phaseCovariance.covarianceMatrixFillInMasked(
 #         directPCOne, pupApStartsOnly )
@@ -727,8 +815,8 @@ if __name__=="__main__":
       import scipy.sparse
       ATA=A.transpose().tocsr().dot(A) ; ATB=A.transpose().tocsr().dot(B)
       ATA=ATA+scipy.sparse.csr_matrix(
-            (1e-2*numpy.ones(chainsDefChStrts[2]),
-             range(chainsDefChStrts[2]), range(chainsDefChStrts[2]+1) ) )
+            (1e-2*numpy.ones(smmtnsDefChStrts[2]),
+             range(smmtnsDefChStrts[2]), range(smmtnsDefChStrts[2]+1) ) )
       offsetEstM=None
 
    print("(done)") ; sys.stdout.flush()
@@ -736,12 +824,12 @@ if __name__=="__main__":
 
    if not doSparse:
       print("offset discovery (MVM)...",end="") ; sys.stdout.flush()
-      offsetEstV=numpy.dot( offsetEstM, chainsV )
+      offsetEstV=numpy.dot( offsetEstM, smmtnsV )
    else:
       print("offset discovery (sparse CG)...",end="") ; sys.stdout.flush()
       import scipy.sparse.linalg
       _A=ATA
-      _b=ATB.dot( chainsV )
+      _b=ATB.dot( smmtnsV )
       thiscounter=counter()
       linalgRes=scipy.sparse.linalg.cg(
             _A, _b, callback=thiscounter.cb,tol=1e-3 )
@@ -757,19 +845,19 @@ if __name__=="__main__":
 
    print("recon...",end="") ; sys.stdout.flush()
    # do one way...
-   for x in range(len(chains[0])):
+   for x in range(len(smmtns[0])):
       toeI=x
-      for i in range((chainsDef[0][x][1])):
-         comp[ chainsDef[0][x][0][i] ]+=(chains[0][x][i]+offsetEstV[toeI])
-         updates[ chainsDef[0][x][0][i] ]+=1
+      for i in range((smmtnsDef[0][x][1])):
+         comp[ smmtnsDef[0][x][0][i] ]+=(smmtns[0][x][i]+offsetEstV[toeI])
+         updates[ smmtnsDef[0][x][0][i] ]+=1
          pass
    # ...then another
-   for x in range(len(chains[1])):
-      toeI=chainsDefChStrts[1][2][x]
-      for i in range((chainsDef[1][x][1])):
-         comp[ N[0]**2+chainsDef[1][x][0][i] ]+=\
-               (chains[1][x][i]+offsetEstV[toeI])
-         updates[ N[0]**2+chainsDef[1][x][0][i] ]+=1
+   for x in range(len(smmtns[1])):
+      toeI=smmtnsDefChStrts[1][2][x]
+      for i in range((smmtnsDef[1][x][1])):
+         comp[ N[0]**2+smmtnsDef[1][x][0][i] ]+=\
+               (smmtns[1][x][i]+offsetEstV[toeI])
+         updates[ N[0]**2+smmtnsDef[1][x][0][i] ]+=1
          pass
    print("(done)") ; sys.stdout.flush()
 
@@ -881,23 +969,23 @@ if __name__=="__main__":
    if len(raw_input("plot? (blank=don't)"))>0:
       pyp.spectral()
       blank=numpy.zeros([2]+gInst.n_)
-      for i in chainsDef[0]: blank[0].ravel()[ i[0] ]=i[-1]%4
-      for i in chainsDef[1]: blank[1].ravel()[ i[0] ]=i[-1]%4
+      for i in smmtnsDef[0]: blank[0].ravel()[ i[0] ]=i[-1]%4
+      for i in smmtnsDef[1]: blank[1].ravel()[ i[0] ]=i[-1]%4
 
       for c in (0,1):
          pyp.subplot(3,4,c+1)
-         pyp.title("def:chains{0:1d}".format(c+1))
+         pyp.title("def:smmtns{0:1d}".format(c+1))
          pyp.imshow( ma.masked_array(blank[c],pupAp==0),
                origin='bottom',vmin=0 )
       blank2=numpy.zeros([2]+gInst.n_)-10
       for dirn in (0,1):
-         for i in range(len(chainsDef[dirn])):
-            blank2[dirn].ravel()[ chainsDef[dirn][i][0] ]=chains[dirn][i]
+         for i in range(len(smmtnsDef[dirn])):
+            blank2[dirn].ravel()[ smmtnsDef[dirn][i][0] ]=smmtns[dirn][i]
             pass
 
       for c in (0,1):
          pyp.subplot(3,4,c+1+2)
-         pyp.title("chains{0:1d}".format(c+1))
+         pyp.title("smmtns{0:1d}".format(c+1))
          pyp.imshow( ma.masked_array(blank2[c],pupAp==0),
                origin='bottom' )
 
@@ -909,16 +997,16 @@ if __name__=="__main__":
       pyp.subplot(3,4,6)
       pyp.imshow( compViz[0], origin='bottom',
             vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("chains1")
+      pyp.xlabel("smmtns1")
       pyp.colorbar()
       pyp.subplot(3,4,7)
       pyp.imshow( compViz[1], origin='bottom',
             vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("chains2")
+      pyp.xlabel("smmtns2")
       pyp.subplot(3,4,8)
       pyp.imshow( compBothViz, origin='bottom',
             vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("chains1&2")
+      pyp.xlabel("smmtns1&2")
       pyp.colorbar()
 
       pyp.subplot(3,4,9)
@@ -926,7 +1014,7 @@ if __name__=="__main__":
             origin='bottom',
             vmin=(rdmViz.ravel().min()),
             vmax=(rdmViz.ravel().max()))
-      pyp.xlabel("orig-chains1&2")
+      pyp.xlabel("orig-smmtns1&2")
       pyp.colorbar()
       pyp.gcf().get_axes()[-1].set_ylabel("nb actual scale")
 
@@ -934,30 +1022,30 @@ if __name__=="__main__":
       pyp.imshow( numpy.log10(abs(rdmViz-compViz[0])), origin='bottom',
             vmin=-2+numpy.log10(rdmViz.ravel().max()),
             vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-chains1")
+      pyp.xlabel("orig-smmtns1")
       pyp.subplot(3,4,11)
       pyp.imshow( numpy.log10(abs(rdmViz-compViz[1])), origin='bottom',
             vmin=-2+numpy.log10(rdmViz.ravel().max()),
             vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-chains2")
+      pyp.xlabel("orig-smmtns2")
       pyp.subplot(3,4,12)
       pyp.imshow( numpy.log10(abs(rdmViz-compBothViz)),
             origin='bottom',
             vmin=-2+numpy.log10(rdmViz.ravel().max()),
             vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-chains1&2")
+      pyp.xlabel("orig-smmtns1&2")
       pyp.colorbar()
       pyp.gcf().get_axes()[-1].set_ylabel("nb log10 scale")
 
       pyp.figure()
-      pyp.title("Chain starts, blue circles & red dots")
+      pyp.title("Summation starts, blue circles & red dots")
       pyp.imshow( rdmViz.mask, vmin=-1, vmax=0.5, origin='bottom', cmap='gray' )
-      pyp.plot( [ x[0][0]%N[0] for x in chainsDef[1] ],
-                  [ x[0][0]//N[0] for x in chainsDef[1] ], 'o',
+      pyp.plot( [ x[0][0]%N[0] for x in smmtnsDef[1] ],
+                  [ x[0][0]//N[0] for x in smmtnsDef[1] ], 'o',
                   markerfacecolor='none', markeredgecolor='b',
                   markeredgewidth=1 )
-      pyp.plot( [ x[0][0]%N[0] for x in chainsDef[0] ],
-                  [ x[0][0]//N[0] for x in chainsDef[0] ], 'r.' )
+      pyp.plot( [ x[0][0]%N[0] for x in smmtnsDef[0] ],
+                  [ x[0][0]//N[0] for x in smmtnsDef[0] ], 'r.' )
       pyp.axis([-0.5,N[0]-0.5]*2)
       pyp.figure()
       pyp.subplot(3,2,1)

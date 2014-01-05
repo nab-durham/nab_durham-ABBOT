@@ -1,0 +1,23 @@
+posns={'cds':[],'params':[]}
+
+for x in gO.subapMaskIdx:
+  if x+1 in gO.subapMaskIdx and x%gO.n[1]!=gO.n[1]-1:
+    if (x//gO.n[0],x%gO.n[0]+0.5) not in posns['cds']:
+      posns['cds'].append( (x//gO.n[0],x%gO.n[0]+0.5 ) )
+      posns['params'].append( ( 1,
+         gO.subapMaskIdx.searchsorted(x+1),
+         gO.subapMaskIdx.searchsorted(x) ) )
+  if x+gO.n[0] in gO.subapMaskIdx:
+    if (x//gO.n[0]+0.5,x%gO.n[0]) not in posns['cds']:
+      posns['cds'].append( (x//gO.n[0]+0.5,x%gO.n[0] ) )
+      posns['params'].append( ( 0,
+         gO.subapMaskIdx.searchsorted(x+gO.n[0]),
+         gO.subapMaskIdx.searchsorted(x) ) )
+
+
+curvM=numpy.zeros([ len(posns['params']),gO.numberSubaps*2 ], numpy.int16 )
+for i,curvData in enumerate(posns['params']):
+   curvM[i,curvData[1]]=1
+   curvM[i,curvData[2]]=-1
+   curvM[i,curvData[1]+gO.numberSubaps]=1
+   curvM[i,curvData[2]+gO.numberSubaps]=-1

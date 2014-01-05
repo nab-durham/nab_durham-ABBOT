@@ -9,12 +9,17 @@ import numpy
 import Zernike
 import projection
 import gradientOperator
+import modalBasis
 import matplotlib.pyplot as pyp
 import commonSeed
 import sys
 
+import time
+numpy.random.seed(int(time.time()%1234))
+
 nAzi=4
 baseSize=8
+starHeight=15e3
 za=15/20.0e3
 dH=2e3
 Hmax=6e3
@@ -28,8 +33,9 @@ useGrads=True
 # intermediate means 'intermediate layer restriction'
 # laplacian means Laplacian approximation
 # SVD means avoid direct inversion
-simple=['intermediate','laplacian','SVD','naive'][1]
+regularizationType=['intermediate','laplacian','SVD','naive'][1]
 modalPowers={'r':[1,2],'ang':[1]}
+modalFilterEnabled=1
 
 
 
@@ -56,11 +62,17 @@ aa=2*numpy.pi*(nAzi**-1.0)
 
 reconGeometry=projection.projection(
       numpy.ceil( numpy.arange(numpy.ceil((Hmax/dH)))*dH ),
-      [za]*nAzi, numpy.arange(nAzi)*aa, mask )
-modalBasis=gradientOperator.modalBasis( mask, [1,2],[1,2] )
-modalFiltering=[ numpy.identity(nMask)-
+      [za]*nAzi, numpy.arange(nAzi)*aa, mask, starHeight=starHeight )
+ZmodalBasis=modalBasis.modalBasis( mask, [1],[1,2], orthonormalize=0 )
+modalFiltering=[ 
       thismodalB.reshape([-1,1]).dot(thismodalB.reshape([1,-1]))
-         for thismodalB in modalBasis.orthomodalFunctions ]
+         for thismodalB in ZmodalBasis.modalFunctions ]
+modalFilteringSummed=(
+      numpy.identity(nMask)-numpy.array(modalFiltering).sum(axis=0) )
+modalFiltAllM=numpy.zeros(
+         [nMask*nAzi, nMask*nAzi], numpy.float64)
+for i in range(nAzi): # nAzi directions gradient operator
+   modalFiltAllM[nMask*i:nMask*(i+1),nMask*i:nMask*(i+1)]=modalFilteringSummed
 
 if not reconGeometry.createLayerMasks(): raise ValueError("Eek! (1)")
 
@@ -81,7 +93,11 @@ print("NOTE: Same geometry assumed")
 layerExM=reconGeometry.layerExtractionMatrix()
 sumPrM=reconGeometry.sumProjectedMatrix()
 reconTrimIdx=reconGeometry.trimIdx()
-sumLayerExM=numpy.dot( sumPrM, layerExM.take(reconTrimIdx,axis=1) )
+sumLayerExM=sumPrM.dot(layerExM.take(reconTrimIdx,axis=1))
+if modalFilterEnabled:
+   print("Modal filtering applied")
+   sumLayerExM=modalFiltAllM.dot(sumLayerExM)
+
 
 if useGrads:
    sumLayerExM=numpy.dot( gradAllM, sumLayerExM )
@@ -136,16 +152,17 @@ sTs=numpy.dot(sumLayerExM.transpose(),sumLayerExM)
 layerInsertionIdx=reconGeometry.trimIdx(False)
 regularisationM=numpy.zeros([layerInsertionIdx[-1][0]]*2)
 
-if simple=='naive':
+if regularizationType=='naive':
    # \/ Tikhonov regularisation
+   print("Naive")
    layerInsertionIdx=reconGeometry.trimIdx(False)
    for i in range(reconGeometry.nLayers):
       diagIdx=numpy.arange( layerInsertionIdx[i][0],layerInsertionIdx[i+1][0] )\
             *(layerInsertionIdx[-1][0]+1)
       regularisationM.ravel()[diagIdx]=1e-3*weights[i]**-2.0
-elif simple=='intermediate':
+elif regularizationType=='intermediate':
    # \/ Intermediate layer restriction
-   print("Making regularisation matrix...",end="") ; sys.stdout.flush()
+   print("Intermediate-layer restriction...",end="") ; sys.stdout.flush()
    layerMapping=[]
    for actualLh in actualGeometry.layerHeights:
       i=reconGeometry.layerHeights.searchsorted(actualLh)
@@ -170,7 +187,8 @@ elif simple=='intermediate':
    regularisationM.ravel()[
          numpy.arange(layerInsertionIdx[-1][0])*(layerInsertionIdx[-1][0]+1)]=\
             1e-3*regularisationD**-0.5
-elif simple=='laplacian':
+elif regularizationType=='laplacian':
+   print("Bi-harmonic approximation...")
    offset=0
    for i in range(reconGeometry.nLayers):
       tlO=gradientOperator.laplacianOperatorType1(
@@ -181,7 +199,7 @@ elif simple=='laplacian':
                1e-3*tlO.dot(tlO.T)*weights[i]**-2.0
       offset+=tlO.shape[0]
 
-if simple=='SVD':
+if regularizationType=='SVD':
    # \/ SVD approach
    usePinv=True
    print("SVD...",end="") ; sys.stdout.flush()
@@ -210,8 +228,8 @@ recoveredV=numpy.dot( recoveryM, randomProjV )
 recoveredLayersA=[
    numpy.ma.masked_array(
       numpy.zeros(reconGeometry.layerNpix[i], numpy.float64),
-         reconGeometry.layerMasks[i].sum(axis=0)==0)
-            for i in range(reconGeometry.nLayers) ]
+      reconGeometry.layerMasks[i].sum(axis=0)==0)
+      for i in range(reconGeometry.nLayers) ]
 
 for i in range(reconGeometry.nLayers):
    recoveredLayersA[i].ravel()[layerInsertionIdx[i][1]]=\
@@ -242,5 +260,130 @@ for i in range(reconGeometry.nLayers):
    print("  Original RMS={0:5.3g}".format(inputDataA[i].var()))
    print("  Difference RMS={0:5.3g}".format(
       (inputDataA[i]-recoveredLayersA[i]).var()))
+
+# centre projected values
+reconCentreProjM=reconGeometry.layerCentreProjectionMatrix().take(
+   reconTrimIdx, axis=1 )
+actualCentreProjM=actualGeometry.layerCentreProjectionMatrix().take(
+   actualTrimIdx, axis=1 )
+centreRecoveredV=numpy.dot( reconCentreProjM, recoveredV )
+inputCentreV=numpy.dot( actualCentreProjM, randomExV )
+for i in range(reconGeometry.nLayers):
+   centreRecoveredV[i*nMask:(i+1)*nMask]-=\
+         centreRecoveredV[i*nMask:(i+1)*nMask].mean()
+   inputCentreV[i*nMask:(i+1)*nMask]-=\
+         inputCentreV[i*nMask:(i+1)*nMask].mean()
+
+centreMaskedA=numpy.ma.masked_array( 
+   numpy.zeros([reconGeometry.nLayers,2]+list(mask.shape)),
+      [[mask==0]*2]*reconGeometry.nLayers )
+if reconGeometry.nLayers==actualGeometry.nLayers:
+   pyp.figure(2)
+   print("\nCentre proj")
+   for i in range(reconGeometry.nLayers):
+      pyp.subplot(reconGeometry.nLayers,3,1+i*3)
+      centreMaskedA[i,0].ravel()[actualGeometry.maskIdx]=\
+         centreRecoveredV[i*nMask:(i+1)*nMask]
+      centreMaskedA[i,0]-=centreMaskedA[i,0].mean()
+      pyp.imshow( centreMaskedA[i,0]+0.0, interpolation='nearest',
+         vmin=-1*weights[i],vmax=1*weights[i] )
+      pyp.xlabel("layer={0:1d}".format(i+1))
+      pyp.ylabel("recov.")
+      
+      pyp.subplot(reconGeometry.nLayers,3,2+i*3)
+      if i==0: pyp.title("centre proj: input vs. reconstruction")
+      centreMaskedA[i,1].ravel()[actualGeometry.maskIdx]=\
+         inputCentreV[i*nMask:(i+1)*nMask]
+      centreMaskedA[i,1]-=centreMaskedA[i,1].mean()
+      pyp.imshow( centreMaskedA[i,1]+0.0, interpolation='nearest',
+         vmin=-1*weights[i],vmax=1*weights[i] )
+      pyp.ylabel("orig.")
+      
+      pyp.subplot(reconGeometry.nLayers,3,3+i*3)
+      pyp.imshow( centreMaskedA[i,1]-centreMaskedA[i,0],
+         interpolation='nearest',
+         vmin=-1*weights[i],vmax=1*weights[i] )
+      pyp.ylabel("diff.")
+
+      print(" Layer#{0:d}".format(i+1))
+      print("  Original RMS={0:5.3g}".format(centreMaskedA[i,1].var()))
+      print("  Difference RMS={0:5.3g}".format(
+         (centreMaskedA[i,0]-centreMaskedA[i,1]).var()))
+
+# last bit, see how centre projected and summed values differ
+# naive is just the mean of the input vectors
+actualProjCentSumM=actualGeometry.sumCentreProjectedMatrix()
+reconProjCentSumM=reconGeometry.sumCentreProjectedMatrix()
+actualCentSumV=numpy.dot( actualProjCentSumM, inputCentreV )
+reconCentSumV=numpy.dot( reconProjCentSumM, centreRecoveredV )
+naiveMeanV=numpy.zeros( nMask, numpy.float64 )
+for i in range(nAzi): # create arithmetic mean, by slicing
+   naiveMeanV+=randomProjV[i*nMask:(i+1)*nMask]
+naiveMeanV/=nAzi+0.0
+naiveMeanV-=naiveMeanV.mean()
+
+centreSumMaskedA={}
+for i in ("actual","recon","naive"):
+   centreSumMaskedA[i]=numpy.ma.masked_array( 
+      numpy.zeros(mask.shape), [mask==0] )
+pyp.figure(3)
+centreSumMaskedA['actual'].ravel()[actualGeometry.maskIdx]=actualCentSumV
+centreSumMaskedA['recon'].ravel()[actualGeometry.maskIdx]=reconCentSumV
+centreSumMaskedA['naive'].ravel()[actualGeometry.maskIdx]=naiveMeanV
+
+minMax=( centreSumMaskedA['actual'].ravel().min()
+       , centreSumMaskedA['actual'].ravel().max() )
+pyp.subplot(2,2,1)            
+pyp.title("centreSum: recov.")
+pyp.imshow( centreSumMaskedA['actual'], interpolation='nearest',
+  vmin=minMax[0], vmax=minMax[1] )
+
+pyp.subplot(2,2,2)
+pyp.imshow( centreSumMaskedA['recon'], interpolation='nearest',
+  vmin=minMax[0], vmax=minMax[1] )
+pyp.title("CS: orig.")
+
+pyp.subplot(2,2,3)
+pyp.imshow( centreSumMaskedA['recon']-centreSumMaskedA['actual'],
+  interpolation='nearest',
+  vmin=minMax[0], vmax=minMax[1] )
+pyp.title("diff.")
+
+pyp.subplot(2,2,4)
+pyp.imshow( centreSumMaskedA['naive'], interpolation='nearest',
+  vmin=minMax[0], vmax=minMax[1] )
+pyp.title("naive.")
+
+print("\nCentre summed")
+print(" Original RMS={0:5.3g}".format(actualCentSumV.var()))
+print(" Difference RMS={0:5.3g}".format(
+   (actualCentSumV-reconCentSumV).var()))
+print(" ( naive difference RMS={0:5.3g} )".format(
+   (actualCentSumV-naiveMeanV).var()))
+print("\n~GLAO")
+print(" Original RMS={0:5.3g}".format(inputCentreV[:nMask].var()))
+print(" Difference RMS={0:5.3g}".format(
+   (inputCentreV[:nMask]-centreRecoveredV[:nMask]).var()))
+print(" ( naive difference RMS={0:5.3g} )".format(
+   (inputCentreV[:nMask]--naiveMeanV).var()))
+pyp.figure(4)
+pyp.plot( actualCentSumV, reconCentSumV, 'rx',
+  label='projected centre, summed' )
+pyp.plot( inputCentreV[:nMask], centreRecoveredV[:nMask], 'bx',
+  label='surface layers' )
+pyp.legend(loc=0)
+   
+pyp.plot( [numpy.array(
+   [list(pyp.gca().get_xlim())]+[list(pyp.gca().get_ylim())]
+      ).transpose().min(),numpy.array(
+   [list(pyp.gca().get_xlim())]+[list(pyp.gca().get_ylim())]
+      ).transpose().max()],
+         [numpy.array(
+   [list(pyp.gca().get_xlim())]+[list(pyp.gca().get_ylim())]
+      ).transpose().min(),numpy.array(
+   [list(pyp.gca().get_xlim())]+[list(pyp.gca().get_ylim())]
+      ).transpose().max()], 'k--')
+pyp.xlabel("Input, centre proj.")
+pyp.ylabel("Recovered, centre proj.")
 
 pyp.waitforbuttonpress()

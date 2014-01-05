@@ -1,7 +1,7 @@
 # What is this?
-# Generate gradient operator based on pupil mask
+# Generate gradient operators based on pupil mask.
+# Also define a geometry class that is generally useful.
 
-import matplotlib.pyplot as pg
 import numpy
 
 # Hardy, 1998, p.270 for configurations
@@ -117,7 +117,57 @@ class gradientOperatorType1(geometryType1):
             row.append(i+self.numberSubaps)
             col.append(r[j])
             data.append( (1-2*(j<2))*0.5 )
-         self.op=scipy.sparse.csr_matrix((data,(row,col)), dtype=numpy.float64)
+      self.op=scipy.sparse.csr_matrix((data,(row,col)), dtype=numpy.float64)
+
+class curvatureViaSlopesType1(gradientOperatorType1):
+   '''Using Type 1 geometry, define a curvature operator matrix that
+   acts on slopes.
+   @param centred [boolean]
+     Whether the Laplacian estimate should be calculated between sub-apertures
+     (False) or at sub-aperture corners (True)
+   '''
+   numberCurvatures=None
+   curvaturePosns=[]
+   curvatureParams=[]
+
+   def newSubaperturesGiven(self, subapMask):
+      for x in self.subapMaskIdx:
+        if x+1 in self.subapMaskIdx and x%self.n[1]!=self.n[1]-1:
+          if (x//self.n[0],x%self.n[0]+0.5) not in self.curvaturePosns:
+            self.curvaturePosns.append( (x//self.n[0],x%self.n[0]+0.5 ) )
+            self.curvatureParams.append( ( 1,
+               self.subapMaskIdx.searchsorted(x+1),
+               self.subapMaskIdx.searchsorted(x) ) )
+        if x+self.n[0] in self.subapMaskIdx:
+          if (x//self.n[0]+0.5,x%self.n[0]) not in self.curvaturePosns:
+            self.curvaturePosns.append( (x//self.n[0]+0.5,x%self.n[0] ) )
+            self.curvatureParams.append( ( 0,
+               self.subapMaskIdx.searchsorted(x+self.n[0]),
+               self.subapMaskIdx.searchsorted(x) ) )
+      self.numberCurvatures=len(self.curvaturePosns)
+
+   def calcOp_NumpyArray(self):
+      # gradient matrix
+      self.op=numpy.zeros(
+         [ self.numberCurvatures,self.numberSubaps*2 ], numpy.float64)
+      for i,r in enumerate(self.curvatureParams):
+            # \/ difference of grad x
+         self.op[i,r[1]]=1
+         self.op[i,r[2]]=-1
+            # \/ difference of grad y
+         self.op[i,r[1]+self.numberSubaps]=1
+         self.op[i,r[2]+self.numberSubaps]=-1
+
+   def calcOp_scipyCSR(self):
+      import scipy.sparse # only required if we reach this stage
+      row,col=[],[] ; data=[]
+      for i,r in enumerate(self.curvatureParams):
+            # \/ difference of grad x
+         s=[ r[1], r[2], r[1]+self.numberSubaps, r[2]+self.numberSubaps ]
+         for j in range(4):
+            row.append( i ) ; col.append( s[j] )
+            data.append( 1-(j%2)*2 )
+      self.op=scipy.sparse.csr_matrix((data,(row,col)), dtype=numpy.float64)
 
 # ------------------------------
 
@@ -250,6 +300,8 @@ class gradientOperatorType2(gradientOperatorType1):
          self.op[i+self.numberXSubaps,r[0]]=-1
          self.op[i+self.numberXSubaps,r[1]]=1
 
+
+
 # ------------------------------
 
 
@@ -363,14 +415,6 @@ class waffleOperatorType1(gradientOperatorType1):
       self.op-=numpy.mean(self.op) # remove the mean component
       self.op*=numpy.dot(self.op,self.op)**-0.5 # rescale
 
-
-   # biharmonic stencil is
-   # [0  1  0]
-   # [1 -4  1]
-   # [0  1  0]
-   # so for each point, want the four nearest neighbours,
-laplacianStencil=[1,1,-4,1,1]
-
 # The approximation to the kolmogorov inverse stencil, based on explicit
 # SVD-based inversion is, with the centre weighted at +4 c.f. the laplacian,
 #
@@ -404,6 +448,67 @@ def genericKolmogInverse_findLocation(self, i):
       for i in range(25) ]
    return valid
 
+def genericKolmogInverseCalcOp(operator):
+   self=operator
+   data=[] ; row=[] ; col=[]
+   for i in range(self.numberPhases):
+      valid=genericKolmogInverse_findLocation(self,i)
+      for j in range(25):
+         if valid[j].shape[0]==1:
+            row.append(i) ; col.append(valid[j][0])
+            data.append(kolmogInverseStencil[j])
+   if self.sparse:
+      self.op=scipy.sparse.csr_matrix( (data, (row,col)), dtype=numpy.float64 )
+   else:
+      self.op=numpy.array( [max(row),max(col)], numpy.float64 )
+      for i in range(len(row)):
+         self.op[ row[i],col[i] ]=data[i]
+
+   # biharmonic stencil is
+   # [0  1  0]
+   # [1 -4  1]
+   # [0  1  0]
+   # so for each point, want the four nearest neighbours,
+laplacianStencil=[1,1,-4,1,1]
+
+   # biharmonic via slopes stencil for slopes is
+   # [ 1  0 1]
+   # [ 0 -4 0]
+   # [ 1  0 1]
+   # and stencil for the slopes (x,y) themselves becomes
+   # [(-1, 1) ( 1, 1)]
+   # [(-1,-1) ( 1,-1)]
+   # so for each phase point, want the sub-apertures that phase point
+   # contributes to. The stencil works by first doing x, and then y,
+   # and then the modifications to the valid indices create the appropriate
+   # terms in the operator matrix
+laplacianViaSlopesStencil=[
+       1,-1, 1,-1,
+       1, 1,-1,-1 
+    ]
+
+def genericLaplacianViaSlopes_findLocation(self, i):
+   thisIdx=self.illuminatedCornersIdx[i]
+      # the matrix will map between slope-space and phase-space, and so
+      # the given phase point is first required to be mapped to the relevant
+      # sub-aperture, which is the upper-left
+      # \/ 2D to account for sub-aperture positions being less than 
+      #   phase positions, so wrapping is an issue
+   saIdx=(thisIdx//self.n_[0]),(thisIdx%self.n_[1])
+   wantedIdx=[
+      (saIdx[0],  saIdx[1]  ),
+      (saIdx[0],  saIdx[1]-1),
+      (saIdx[0]-1,saIdx[1]  ),
+      (saIdx[0]-1,saIdx[1]-1),
+   ]
+   valid=[ numpy.flatnonzero(numpy.array(
+            [ (saMI//self.n[0],saMI%self.n[1])==twi
+               for saMI in self.subapMaskIdx ])) for twi in wantedIdx ]+\
+               [ self.numberSubaps+numpy.flatnonzero(numpy.array(
+            [ (saMI//self.n[0],saMI%self.n[1])==twi
+               for saMI in self.subapMaskIdx ])) for twi in wantedIdx ]
+   return valid
+
 def genericLaplacian_findLocation(self, i):
    thisIdx=self.illuminatedCornersIdx[i]
    wantedIdx=[
@@ -420,54 +525,37 @@ def genericLaplacian_findLocation(self, i):
       for twi in wantedIdx ]
    return valid
 
-def genericKolmogInverseCalcOp_NumpyArray(operator):
+def genericLaplacianCalcOp(operator):
    self=operator
-   self.op=numpy.zeros( [self.numberPhases]*2, numpy.float64 )
-   for i in range(self.numberPhases):
-      valid=genericKolmogInverse_findLocation(self,i)
-      for j in range(25):
-         if valid[j].shape[0]==1:
-            loc=valid[j][0]
-            self.op[i, loc ]=kolmogInverseStencil[j]
-
-def genericLaplacianCalcOp_NumpyArray(operator):
-   self=operator
-   self.op=numpy.zeros( [self.numberPhases]*2, numpy.float64 )
-   # numpy.flatnonzero(gO.illuminatedCornersIdx==3)
-   for i in range(self.numberPhases):
-      valid=genericLaplacian_findLocation(self,i)
-      for j in range(len(laplacianStencil)):
-         if valid[j].shape[0]==1:
-            loc=valid[j][0]
-            self.op[i, loc ]=laplacianStencil[j]
-
-def genericLaplacianCalcOp_scipyCSR(operator):
-   import scipy.sparse
-   self=operator
+#(old)   self.op=numpy.zeros( [self.numberPhases]*2, numpy.float64 )
    data=[] ; row=[] ; col=[]
    for i in range(self.numberPhases):
-      valid=genericLaplacian_findLocation(self,i)
-      for j in range(len(laplacianStencil)):
+      valid=self.laplacianLocFn(i)
+      for j in range(len(self.laplacianStencil)):
          if valid[j].shape[0]==1:
             row.append(i) ; col.append(valid[j][0])
-            data.append(laplacianStencil[j])
-   self.op=scipy.sparse.csr_matrix( (data, (row,col)), dtype=numpy.float64 )
-
-#class laplacianOperatorPupil:
-#   '''Define an operator that computes the Laplacian, based on a pupil mask'''
-#   def __init__(self, pupilMask):
-#         # Create relevant data from the given pupilMask
-#      self.numberPhases=(pupilMask!=0).sum()
-#      self.illuminatedCornersIdx=numpy.flatnonzero( pupilMask.ravel() )
-#      self.n_=pupilMask.shape
-#      genericLaplacianCalcOp_NumpyArray(self)
+            data.append(self.laplacianStencil[j])
+   if self.sparse:
+      import scipy.sparse
+      self.op=scipy.sparse.csr_matrix( (data, (row,col)), dtype=numpy.float64 )
+   else:
+      self.op=numpy.zeros( [max(row)+1,max(col)+1], numpy.float64 )
+      for i in range(len(row)):
+         self.op[ row[i],col[i] ]=data[i]
 
 class laplacianOperatorType1(gradientOperatorType1):
    '''Define an operator that computes the Laplacian'''
+   laplacianLocFn=genericLaplacian_findLocation
+   laplacianStencil=laplacianStencil
    def calcOp_NumpyArray(self):
-      genericLaplacianCalcOp_NumpyArray(self)
+      genericLaplacianCalcOp(self)
    def calcOp_scipyCSR(self):
-      genericLaplacianCalcOp_scipyCSR(self)
+      genericLaplacianCalcOp(self)
+
+class laplacianOperatorViaSlopesType1(laplacianOperatorType1):
+   '''Define an operator that computes the Laplacian'''
+   laplacianLocFn=genericLaplacianViaSlopes_findLocation
+   laplacianStencil=laplacianViaSlopesStencil
 
 class laplacianOperatorType2(gradientOperatorType2):
    '''Define an operator that computes the Laplacian, for Type 2'''
@@ -485,7 +573,7 @@ class kolmogInverseOperatorType1(gradientOperatorType1):
    def calcOp_NumpyArray(self):
       genericKolmogInverseCalcOp_NumpyArray(self)
    def calcOp_scipyCSR(self):
-      raise RuntimeError("Not implemented for CSR")
+      genericKolmogInverseCalcOp_NumpyArray(self)
 
 # ------------------------------
 
@@ -525,102 +613,11 @@ class localMaskOperatorType1(gradientOperatorType1):
          for j in self.finalWantedIdx:
             self.op[i, j]+=1
 
-
-
-class modalBasis(geometryType1):
-   '''Based on type 1 geometry, calculate modal basis upto the specified
-   order of radial terms such that they are orthogonal.
-   NB: this code is only meant for the linear and quadratic terms,
-   perhaps it ought be replaced with Zernike-like terms defined over the
-   aperture to make it more generic.
-   '''
-   op=None
-   numberSubaps=None
-   numberPhases=None
-   sparse=False
-   radialPowers=None
-   angularPowers=None
-
-   def __init__( self, pupilMask, radialPowers=[0], angularPowers=[0],
-         sparse=False, compute=True, verbose=False):
-      self.radialPowers=radialPowers
-      self.angularPowers=angularPowers
-      geometryType1.__init__(self,None,pupilMask)
-      if compute:
-         self.calculateFactors()
-         self.calculatemodalFunctions(verbose)
-
-   def calculateFactors(self):
-      self.cds=[ self.illuminatedCornersIdx//self.n_[0]-(self.n_[0]-1)/2.0
-              ,self.illuminatedCornersIdx%self.n_[1]-(self.n_[1]-1)/2.0 ]
-      self.cds=[ self.cds[i]*(self.n_[i]-1.0)**-1.0 for i in (0,1) ]
-      self.r=(self.cds[0]**2+self.cds[1]**2)**0.5
-      self.rpower=lambda p : numpy.power(self.r,p)
-      self.ang=numpy.arctan2(self.cds[0],self.cds[1])
-      self.angcos=lambda n : numpy.cos(n*self.ang)
-      self.angsin=lambda n : numpy.sin(n*self.ang)
-
-   def modalFunction(self,rPower,angPower,angType):
-      '''rPower, int
-         angPower, int
-         angType, 0=sin,1=cos
-      '''
-      tmf=self.rpower(rPower)*(
-         angType*self.angsin(angPower)+
-         (1-angType)*self.angcos(angPower)
-         )
-      return tmf*(tmf**2.0).sum()**-0.5
-
-   def calculatemodalFunctions(self, verbose=False):
-      self.modalFunctions=[]
-      for tr in self.radialPowers:
-         for ta in xrange(tr%2,min(len(self.angularPowers),tr+1),2):
-            for tt in xrange(1+(ta>0)*1):
-               if verbose: print(tr,ta,tt)
-               self.modalFunctions.append(self.modalFunction(tr,ta,tt))
-      self.modalFunctions=numpy.array(self.modalFunctions)
-      self.mfOrth=limitDP(4,self.modalFunctions.dot(self.modalFunctions.T))
-         # \/ find orthogonal combination of basis
-      self.s,self.v=numpy.linalg.svd(self.mfOrth,full_matrices=1)[1:]
-      self.orthomodalFunctions=\
-         self.v.dot(self.modalFunctions)*(self.s**-0.5).reshape([-1,1]) 
-      self.omfOrth=limitDP(4,
-            self.orthomodalFunctions.dot(self.orthomodalFunctions.T))
       
-
-# (not reqd?)    def calcOp_NumpyArray(self):
-# (not reqd?)       # gradient matrix
-# (not reqd?)       self.op=numpy.zeros(
-# (not reqd?)          [2*self.numberSubaps,self.numberPhases],numpy.float64)
-# (not reqd?)       for i in range(self.numberSubaps):
-# (not reqd?)          r=self.r(i)
-# (not reqd?)             # \/ grad x
-# (not reqd?)          self.op[i,r[0]]=-0.5
-# (not reqd?)          self.op[i,r[1]]=0.5
-# (not reqd?)          self.op[i,r[2]]=-0.5
-# (not reqd?)          self.op[i,r[3]]=0.5
-# (not reqd?)             # \/ self.grad y
-# (not reqd?)          self.op[i+self.numberSubaps,r[0]]=-0.5
-# (not reqd?)          self.op[i+self.numberSubaps,r[1]]=-0.5
-# (not reqd?)          self.op[i+self.numberSubaps,r[2]]=0.5
-# (not reqd?)          self.op[i+self.numberSubaps,r[3]]=0.5
-
-# (not reqd?)    def calcOp_scipyCSR(self):
-# (not reqd?)       import scipy.sparse # only required if we reach this stage
-# (not reqd?)       row,col=[],[] ; data=[]
-# (not reqd?)       for i in range(self.numberSubaps):
-# (not reqd?)          r=self.r(i)
-# (not reqd?)          for j in range(4): # x,y pairs
-# (not reqd?)             row.append(i)
-# (not reqd?)             col.append(r[j])
-# (not reqd?)             data.append( ((j%2)*2-1)*0.5 )
-# (not reqd?)             #
-# (not reqd?)             row.append(i+self.numberSubaps)
-# (not reqd?)             col.append(r[j])
-# (not reqd?)             data.append( (1-2*(j<2))*0.5 )
-# (not reqd?)          self.op=scipy.sparse.csr_matrix((data,(row,col)), dtype=numpy.float64)
+#   =========================================================================
 
 if __name__=="__main__":
+   import matplotlib.pyplot as pg
    nfft=7 # pixel size
    onePhase=numpy.random.normal(size=[nfft+2]*2 ) # Type 1 & Type 3
    # define pupil mask as sub-apertures

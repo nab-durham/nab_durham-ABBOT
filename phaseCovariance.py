@@ -267,23 +267,29 @@ if __name__=='__main__':
          'k', lw=1, alpha=0.75, label='theory' )
    pg.plot( sf[:,0], sf[:,1], 'b.', label='structure function, FFT' )
 
-   import Zernike
-   z15=Zernike.Zernike15(nfft,ongrid=1)
-   z15Norm=z15[0].sum() ; z15/=z15Norm**0.5
-   z15f=z15.reshape([15,nfft**2])
-   z15Cov=numpy.dot(z15f,z15f.transpose()) # covariance of sampled Zernikes
-   chol=numpy.linalg.cholesky(z15Cov)
-   cholInv=numpy.linalg.inv(chol) # orthogonalise
-   zIdx=numpy.flatnonzero( z15[0].ravel() ) # non-zero parts
+   try:
+      import Zernike
+      haveZernike=1
+   except:
+      haveZernike=0
+      print("No Zernike module?")
+   if haveZernike:
+      z15=Zernike.Zernike15(nfft,ongrid=1)
+      z15Norm=z15[0].sum() ; z15/=z15Norm**0.5
+      z15f=z15.reshape([15,nfft**2])
+      z15Cov=numpy.dot(z15f,z15f.transpose()) # covariance of sampled Zernikes
+      chol=numpy.linalg.cholesky(z15Cov)
+      cholInv=numpy.linalg.inv(chol) # orthogonalise
+      zIdx=numpy.flatnonzero( z15[0].ravel() ) # non-zero parts
 
-   zfftCoeffs=numpy.dot(cholInv, numpy.dot( z15f, fftTestPhase ) )/(z15Norm**0.5)
-   phaseVar=( fftTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
-   remnantVar=numpy.array([
-      phaseVar-(zfftCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
-   pg.figure(2)
-   pg.title("Phase variance remnants")
-   pg.plot( numpy.arange(1,16), expectedVar,'wo', label='Kolmog theory')
-   pg.plot( numpy.arange(1,16), remnantVar,'b.', label='FFT')
+      zfftCoeffs=numpy.dot(cholInv, numpy.dot( z15f, fftTestPhase ) )/(z15Norm**0.5)
+      phaseVar=( fftTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
+      remnantVar=numpy.array([
+         phaseVar-(zfftCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
+      pg.figure(2)
+      pg.title("Phase variance remnants")
+      pg.plot( numpy.arange(1,16), expectedVar,'wo', label='Kolmog theory')
+      pg.plot( numpy.arange(1,16), remnantVar,'b.', label='FFT')
 
    print("Waiting for click in matplotlib window...",end="")
    sys.stdout.flush()
@@ -322,12 +328,13 @@ if __name__=='__main__':
    pg.plot( sf[:,0], sf[:,1], 'g.', label='structure function, direct' )
    pg.legend(loc=0)
 
-   zdirectCoeffs=numpy.dot(cholInv, numpy.dot( z15f, directTestPhase ) )/(z15Norm**0.5)
-   phaseVar=( directTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
-   remnantDirectVar=numpy.array([
-      phaseVar-(zdirectCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
-   pg.figure(2)
-   pg.plot( numpy.arange(1,16), remnantDirectVar,'g.', label='direct')
+   if haveZernike:
+      zdirectCoeffs=numpy.dot(cholInv, numpy.dot( z15f, directTestPhase ) )/(z15Norm**0.5)
+      phaseVar=( directTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
+      remnantDirectVar=numpy.array([
+         phaseVar-(zdirectCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
+      pg.figure(2)
+      pg.plot( numpy.arange(1,16), remnantDirectVar,'g.', label='direct')
 
    #pg.show()
    
