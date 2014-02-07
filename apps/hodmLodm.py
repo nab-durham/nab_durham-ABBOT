@@ -2,79 +2,30 @@ from __future__ import print_function
 # What is this?
 # High-order/low-order separation
 
-import dm
-import gradientOperator
 import numpy
-import phaseCovariance
-import sys
-import time
-
 
 # ================
-# Go to the bottom of this file to see past the definitions
+# Go to the bottom of this file to see test code
 # ================
 
-def makeMask(radii,N):
-   radius=numpy.add.outer(
-         (numpy.arange(N)-(N-1)/2.)**2,(numpy.arange(N)-(N-1)/2.)**2 )**0.5
-   return numpy.where( (radius<=(radii[0]*nSubAps/2.0)) &
-                       (radius>=(radii[1]*nSubAps/2.0)), 1, 0)
+printDot=lambda op,extra: None # dummy code
 
-def generateTestPhase(gO,r0,N):
-   L0=3
-   rdm=numpy.random.normal(size=gO.numberPhases)
-
-   directPCOne=phaseCovariance.covarianceDirectRegular( N, r0, L0 )
-   directPC=phaseCovariance.covarianceMatrixFillInMasked(
-      directPCOne, (gO.illuminatedCorners>0) )
-   directcholesky=phaseCovariance.choleskyDecomp(directPC)
-   return phaseCovariance.numpy.dot(directcholesky, rdm)
-
-
-def formPokeMatrices():
-   print("Forming poke matrices, order=",end="")
-   pokeM={}
-   for dmType in dm.keys():
-      print(dmType,end=" ") ; sys.stdout.flush()
-      # setup array for receiving poke matrix
-      pokeM[dmType]=numpy.zeros([2*gO.numberSubaps,sum(dm[dmType].usable)],
-            numpy.float64)
-      # create gradients for each poke
-      for i,j in enumerate(dm[dmType].usableIdx):
-         pokeM[dmType][:,i]=numpy.dot(
-               gM, dm[dmType].poke(j).take(gO.illuminatedCornersIdx) )
-
-   print()
-   return pokeM
-
-def concatenatePokeMatrices(dm,dmOrder):
-   dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
-   stackPokeM=numpy.zeros(
-         [2*gO.numberSubaps,dmLength],numpy.float64)
-   columnI=0
-   print("Concatenating poke matrices, order=",end="")
-   for dmType in dmOrder:
-      print(dmType,end=" ")
-      stackPokeM[:,columnI:columnI+sum(dm[dmType].usable)]=pokeM[dmType]
-      columnI+=sum(dm[dmType].usable)
-  
-   print()
-   return stackPokeM
-
-def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
-   global filterM
+def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
+      showSteps=False):
    reconMs={}
    dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
-   tikhonovRegM=numpy.identity(dmLength)
-   for reconType in reconTypes:
-      sTsM=stackedPMX.T.dot(stackedPMX)
-      print("makeReconstructors: Making '{0:s}' reconstructor".format(
-            reconType),end="")
+   for reconType,lambd in reconTypes:
+      printDot(showSteps,
+            "makeReconstructors: Making '{0:s}' reconstructor".format(
+               reconType))
       if reconType=="SVD_only":
-         reconMs[reconType]=numpy.linalg.pinv( sTsM, lambd).dot(stackedPMX.T)
+         sTsM=stackedPMX.T.dot(stackedPMX)
+         reconMs[reconType]=numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedPMX.T)
       elif reconType=="Inv+Tik":
+         sTsM=stackedPMX.T.dot(stackedPMX)
+         tikhonovRegM=numpy.identity(dmLength)
          reconMs[reconType]=\
-               numpy.linalg.inv( sTsM+tikhonovRegM*lambd ).dot(stackedPMX.T)
+               numpy.linalg.inv( sTsM+tikhonovRegM*lambd[0] ).dot(stackedPMX.T)
       elif reconType=="Diagonal-regularized":
          filterM=numpy.zeros(
                [ sum(dm['ho'].usable),
@@ -88,11 +39,14 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
                numpy.arange(sum(dm['ho'].usable))*(
                   sum(dm['ho'].usable)+sum(dm['lo'].usable)+1) 
                        ]=1 
-         print(".",end="") ; sys.stdout.flush()
+         sTsM=stackedPMX.T.dot(stackedPMX)
+         tikhonovRegM=numpy.identity(dmLength)
          reconMs[reconType]=numpy.linalg.inv(
                      sTsM+lambd[0]*filterM.T.dot(filterM)+tikhonovRegM*lambd[1]
                                             ).dot( stackedPMX.T )
       elif reconType=="Low-order-penalization":
+         lodmN=dm['lo'].actGeom[0]
+         hodmN=dm['ho'].actGeom[0]
          filterM=numpy.zeros(
                [ 2*( (lodmN/2*lambd[1])*(lodmN*lambd[1]) )-2,
                  sum(dm['ho'].usable)+sum(dm['lo'].usable)],numpy.float64)
@@ -110,14 +64,13 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
          modeCounter=0
          hoDMactCds=numpy.array(dm['ho'].actCds,numpy.float64).T
          for xf in range(0,int(lodmN/2*lambd[1])):
-            print("_",end="")
+            printDot(showSteps,"_")
             for yf in range(-int(lodmN/2*lambd[1]),int(lodmN/2*lambd[1])):
-               print("^",end="")
+               printDot(showSteps,"^")
                if xf==0 and yf==0: continue # piston mode
                for k,trigFn in enumerate((numpy.sin,numpy.cos)):  
 #                  if xf==lodmN/2-1 and yf==lodmN/2-1 and trigFn==numpy.cos:
 #                     continue # too high f.
-                  #print("{0:d}/{1:d}".format(xf,yf),end="");sys.stdout.flush()
                   filterM[
                      modeCounter,
                      (dmOrder[0]=='lo')*sum(dm['lo'].usable):
@@ -128,14 +81,13 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
                            xf*hoDMactCds[0]+yf*hoDMactCds[1]) )).take(
                               dm['ho'].usableIdx )
                   modeCounter+=1
-                  #print(modeCounter,xf,yf,k)#,filterM[modeCounter-1,-10:])
-         print(".",end="") ; sys.stdout.flush()
          fTfM=filterM.T.dot(filterM)
-         print(".",end="") ; sys.stdout.flush()
+         sTsM=stackedPMX.T.dot(stackedPMX)
          reconMs[reconType]=\
                numpy.linalg.pinv( sTsM+lambd[0]*fTfM).dot(stackedPMX.T)
 
       elif reconType=="PMX_filtering":
+         if lambd[1]<=0 or lambd[1]>=1: raise ValueError("0<lambd[1]<1 != True")
          # A crude but not inaccurate approach to filtering the HODM poke
          # matrix such that it does not contain the measurements produced by
          # the LODM:
@@ -152,11 +104,15 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
             sI[dmType],eI[dmType]=[
                sum([ numpy.sum(dm[dmOrder[i]].usable)
                   for i in range(dmOrder.index(dmType)+j) ]) for j in (0,1) ]
+         printDot(showSteps)
          loPMX=stackedPMX.take(range(sI['lo'],eI['lo']),axis=1)
          hoPMX=stackedPMX.take(range(sI['ho'],eI['ho']),axis=1)
          loPMXCovM=loPMX.T.dot(loPMX)
+         printDot(showSteps)
          cholLoPMXCovM=numpy.linalg.cholesky( loPMXCovM )
+         printDot(showSteps)
          cholLoPMXCovM_i=numpy.linalg.inv(cholLoPMXCovM) # by defn, not singular
+         printDot(showSteps)
          loPMX_orthM=loPMX.dot(cholLoPMXCovM_i.T)
          loModesHoPMX=numpy.array([
             [ (hoPMX[:,x]*loPMX_orthM[:,y]).sum()*loPMX_orthM[:,y]
@@ -165,25 +121,30 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
          stackedFilteredPMX=stackedPMX.copy()
          stackedFilteredPMX[:,sI['ho']:eI['ho']]-=loModesHoPMX # remove
          fhoPMX=stackedFilteredPMX[:,sI['ho']:eI['ho']] # filtered HO PMX
+         printDot(showSteps)
          #
          hoThoD=( hoPMX.T.dot(hoPMX).diagonal() ) # X-corr of HODM signals
-         chosenI=lambda r:  numpy.flatnonzero( hoThoD>=r )
+         chosenI=lambda r:  numpy.flatnonzero( hoThoD*hoThoD.max()**-1.>=r )
             # \/ chose pokes with cross-correlation amplitude
             # from the unfilterd HO poke mtrx -> these will be those
             # that produce the wavefront, so tacitly ignore the others
          chosenPMX=hoPMX[:,chosenI(lambd[1])] 
+         printDot(showSteps,"+")
          cholchosenPMXTchosenPMX=\
                numpy.linalg.cholesky( chosenPMX.T.dot(chosenPMX) )
             # \/ converts the matrix to being orthogonal
+         printDot(showSteps,"-")
          cholchosenPMXTchosenPMXT_i=numpy.linalg.inv(cholchosenPMXTchosenPMX.T)
             # \/ orthogonal modes from the unfiltered but chosen HO PMX 
             #  note that these are those that produce the largest signals
             #  so are /hopefully/ those which also are sufficient to build
             #  the filtered and unchosen (i.e. full) PMX
+         printDot(showSteps)
          orthchosenPMX=chosenPMX.dot(cholchosenPMXTchosenPMXT_i)
             # \/ the filtered HO modes correspond to the pokes which produce
             # the filtered HO PMX i.e. which pokes produce signals that
             # are orthogonal to the LODM signals.
+         printDot(showSteps)
          filteredHOModesM=numpy.zeros([sum(dm['ho'].usable)]*2)
          filteredHOModesM[chosenI(lambd[1])]=\
                ( cholchosenPMXTchosenPMXT_i.dot(orthchosenPMX.T.dot(fhoPMX)) )
@@ -196,8 +157,10 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
 
          sTsM=stackedFilteredPMX.T.dot(stackedFilteredPMX)
             # \/ reconstructor in the LODM pokes & LODM-filtered HO modes bases
+         printDot(showSteps)
          rmxLFMB=numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedFilteredPMX.T)
             # \/ reconstructor in the LODM pokes & HODM pokes bases
+         printDot(showSteps)
          rmx=filtered2pokesM.dot( rmxLFMB )
          reconMs[reconType]={
              'stackedFilteredPMX':stackedFilteredPMX,
@@ -207,7 +170,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
             }
 
       # end if... elif...
-      print("done")
+      printDot(showSteps,"done")
    for key in reconMs.keys(): # check if reqd to put recon matrix into a dict
       if type(reconMs[key])!=dict:
          reconMs[key]={'rmx':reconMs[key]}
@@ -215,54 +178,116 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder, lambd):
          raise ValueError("'rmx' not a key in reconMs")
    return reconMs
 
-def doPlotsAndPrints(vizAs, ipVs, doPlotting=True):
-   if doPlotting: import matplotlib.pyplot as pyp
-   import string
-   if doPlotting: pyp.figure(1)
-   print(" "+"-"*70)
-   phsMin,phsMax=vizAs['ipphase'].min(), vizAs['ipphase'].max()
-   for i,dataToPlot in enumerate((
-         [ ("ipphase","+"), ],
-         [ ("ho","+"), ],
-         [ ("lo","+"), ],
-         [ ("ho","+"),("lo","+"),("ipphase","-") ] )):
-      if doPlotting:
-         pyp.figure(1)
-         pyp.subplot(2,2,1+i)
-         op=eval(string.join([ "{0[1]:s}vizAs['{0[0]:s}']".format(thisData)
-               for thisData in dataToPlot ]))
-         opTitle=string.join([ "{0[1]:s}{0[0]:s}".format(thisData)
-               for thisData in dataToPlot ])
-      if doPlotting:
-         pyp.imshow( op, vmin=phsMin, vmax=phsMax )
-         pyp.colorbar()
-         pyp.title( opTitle )
-      #
-
-      opCmd=string.join([ "{0[1]:s}ipVs['{0[0]:s}']".format(thisData)
-            for thisData in dataToPlot ])
-      op=eval(opCmd)
-      if doPlotting:
-         pyp.figure(2)
-         pyp.plot( op, label=opTitle )
-      print(" range of {0:s}={1:f}".format( opCmd,op.ptp() ))
-   #
-   print(" "+"-"*70)
-   if doPlotting:
-      pyp.figure(2)
-      pyp.xlabel("phase index (0...nPoints-1)")
-      pyp.ylabel("phase (less mean)")
-      pyp.legend(loc=0)
-      dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
-      pyp.plot([0,dmLength-1],[ipVs['ho'].min()]*2,'k--',lw=1,alpha=0.5)
-      pyp.plot([0,dmLength-1],[ipVs['ho'].max()]*2,'k--',lw=1,alpha=0.5)
-      pyp.show()
-   #
-
-
 # --- main logic follows below ---
 
 if __name__=="__main__":
+   import sys
+   import dm
+   import gradientOperator
+   import phaseCovariance
+   import time
+
+   def printDot(op=True,extra=None):
+      if op and type(extra)==type(None):
+         print(".",end="")
+         sys.stdout.flush()
+      elif op and type(extra)!=type(None):
+         print(str(extra),end="")
+         sys.stdout.flush()
+
+   def makeMask(radii,N):
+      radius=numpy.add.outer(
+            (numpy.arange(N)-(N-1)/2.)**2,(numpy.arange(N)-(N-1)/2.)**2 )**0.5
+      return numpy.where( (radius<=(radii[0]*nSubAps/2.0)) &
+                          (radius>=(radii[1]*nSubAps/2.0)), 1, 0)
+
+   def generateTestPhase(gO,r0,N):
+      L0=3
+      rdm=numpy.random.normal(size=gO.numberPhases)
+
+      directPCOne=phaseCovariance.covarianceDirectRegular( N, r0, L0 )
+      directPC=phaseCovariance.covarianceMatrixFillInMasked(
+         directPCOne, (gO.illuminatedCorners>0) )
+      directcholesky=phaseCovariance.choleskyDecomp(directPC)
+      return phaseCovariance.numpy.dot(directcholesky, rdm)
+
+
+   def formPokeMatrices():
+      print("Forming poke matrices, order=",end="")
+      pokeM={}
+      for dmType in dm.keys():
+         print(dmType,end=" ") ; sys.stdout.flush()
+         # setup array for receiving poke matrix
+         pokeM[dmType]=numpy.zeros([2*gO.numberSubaps,sum(dm[dmType].usable)],
+               numpy.float64)
+         # create gradients for each poke
+         for i,j in enumerate(dm[dmType].usableIdx):
+            pokeM[dmType][:,i]=numpy.dot(
+                  gM, dm[dmType].poke(j).take(gO.illuminatedCornersIdx) )
+
+      print()
+      return pokeM
+
+   def concatenatePokeMatrices(dm,dmOrder):
+      dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
+      stackPokeM=numpy.zeros(
+            [2*gO.numberSubaps,dmLength],numpy.float64)
+      columnI=0
+      print("Concatenating poke matrices, order=",end="")
+      for dmType in dmOrder:
+         print(dmType,end=" ")
+         stackPokeM[:,columnI:columnI+sum(dm[dmType].usable)]=pokeM[dmType]
+         columnI+=sum(dm[dmType].usable)
+     
+      print()
+      return stackPokeM
+
+
+   def doPlotsAndPrints(vizAs, ipVs, doPlotting=True):
+      if doPlotting: import matplotlib.pyplot as pyp
+      import string
+      if doPlotting: pyp.figure(1)
+      print(" "+"-"*70)
+      phsMin,phsMax=vizAs['ipphase'].min(), vizAs['ipphase'].max()
+      for i,dataToPlot in enumerate((
+            [ ("ipphase","+"), ],
+            [ ("ho","+"), ],
+            [ ("lo","+"), ],
+            [ ("ho","+"),("lo","+"),("ipphase","-") ] )):
+         if doPlotting:
+            pyp.figure(1)
+            pyp.subplot(2,2,1+i)
+            op=eval(string.join([ "{0[1]:s}vizAs['{0[0]:s}']".format(thisData)
+                  for thisData in dataToPlot ]))
+            opTitle=string.join([ "{0[1]:s}{0[0]:s}".format(thisData)
+                  for thisData in dataToPlot ])
+         if doPlotting:
+            pyp.imshow( op, vmin=phsMin, vmax=phsMax )
+            pyp.colorbar()
+            pyp.title( opTitle )
+         #
+
+         opCmd=string.join([ "{0[1]:s}ipVs['{0[0]:s}']".format(thisData)
+               for thisData in dataToPlot ])
+         op=eval(opCmd)
+         if doPlotting:
+            pyp.figure(2)
+            pyp.plot( op, label=opTitle )
+         print(" range of {0:s}={1:f}".format( opCmd,op.ptp() ))
+      #
+      print(" "+"-"*70)
+      if doPlotting:
+         pyp.figure(2)
+         pyp.xlabel("phase index (0...nPoints-1)")
+         pyp.ylabel("phase (less mean)")
+         pyp.legend(loc=0)
+         dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
+         pyp.plot([0,dmLength-1],[ipVs['ho'].min()]*2,'k--',lw=1,alpha=0.5)
+         pyp.plot([0,dmLength-1],[ipVs['ho'].max()]*2,'k--',lw=1,alpha=0.5)
+         pyp.show()
+      #
+
+
    # -- variables --
    scaling=30
    nSubAps=scaling-1      # number of sub-apertures
@@ -272,7 +297,7 @@ if __name__=="__main__":
          "Inv+Tik","PMX_filtering")
                           # /\ which reconstructors to calculate
                           # \/ regularization parameters
-   lambds=[0.000001,(0.1,0.001),(1.0,1.0,0.001),0.00001,(0.00001,0.91)]
+   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(0.00001,0.40)]
    try:
       reconTypeIdx=int(sys.argv[1])
       doPlotting=False
@@ -296,21 +321,24 @@ if __name__=="__main__":
    gM=gO.returnOp()
    
    directTestPhase=generateTestPhase(gO,nSubAps/32.0,nSubAps+1) # test phase
+   slopeV=numpy.dot( gM, directTestPhase ) # make slopes, the input
 
    # make DMs
    dm={'ho':dm.dm(gO.n_,[hodmN]*2,maskPupilDMOversized),
        'lo':dm.dm(gO.n_,[lodmN]*2,maskPupilDMOversized) }
-   
+
    pokeM=formPokeMatrices()
    stackedPMX=concatenatePokeMatrices(dm,dmOrder)
-   reconT=reconTypes[reconTypeIdx]
-   lambd=lambds[reconTypeIdx]
-   reconMs=makeReconstructors([reconT], stackedPMX, dm, dmOrder, lambd)
-   reconM=reconMs[reconT]['rmx']
-   slopeV=numpy.dot( gM, directTestPhase )
 
-   # (ends)
-   # -- code logic begins --
+   # >>> The following three lines show how to use the function
+   # >>>
+   reconT=( reconTypes[reconTypeIdx],lambds[reconTypeIdx] ) # configure
+   reconMs=makeReconstructors([reconT], stackedPMX, dm, dmOrder, showSteps=1)
+   reconM=reconMs[reconTypes[reconTypeIdx]]['rmx'] # retrieve
+   # >>>
+   # >>> (ends)
+
+   # -- test code logic begins --
    print("Using reconstructor: {0:s}".format(reconT))
 
       # generate actuator vector, split, and reconstruct DM surfaces
