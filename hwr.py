@@ -22,7 +22,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
    N=gInst.n_ # alias
    blank=numpy.zeros([2]+N)
    smmtnsNumber=0
-   chaninsStrtNum=0
+   smmtnsStrtNum=0
    smmtnsDef=[],[]
    smmtnsStarts=[ ([],[],[]), ([],[],[]), 0]
    insubap=False
@@ -37,6 +37,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
       insubap=False
       for j in range(end):
          thisIdx=y*N[1]+x+j*(N[0]+1)
+#         startNewSmmtn=True
          if insubap:
             forceTerminate=False
             if type(None)!=type(maxLen):  # terminate if too long
@@ -48,23 +49,48 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
 #               if ((thisIdx%N[0])%boundary[0]==int(boundary[0]/2-1)) or\
 #                     ((thisIdx//N[0])%boundary[0]==int(boundary[0]/2-1)):
                   # \/ horizontal, vertical boundaries, common
-               if ((thisIdx%N[0])%boundary[0]==0) or\
-                     ((thisIdx//N[0])%boundary[0]==0):
+               if (((thisIdx%N[0])%boundary[0]==0) or\
+                     ((thisIdx//N[0])%boundary[1]==0))\
+                  and\
+                  ( ((thisIdx//N[0])<(N[0]-1)) and
+                    ((thisIdx%N[0])<(N[1]-1)) ):
                   # \/ diagonal boundaries
 #               if ((thisIdx%N[0])%boundary[0]==((N[0]-thisIdx//N[0])%boundary[0])):
                   forceTerminate=True
+            if forceTerminate:
+               # check that forcing termination won't result in a grid
+               # point that cannot then be included
+               if shortSmmtns:
+                  if thisIdx in gInst.illuminatedCornersIdx and not (
+                        thisIdx+N[1] in gInst.illuminatedCornersIdx and
+                        thisIdx+N[1]+1 in gInst.illuminatedCornersIdx and
+                        thisIdx+1 in gInst.illuminatedCornersIdx):
+   #                  print("<<<",thisIdx,thisIdx%N[0],thisIdx//N[0]) 
+                     forceTerminate=False
+               else:
+                  nextThisIdx=thisIdx+(N[0]+1)
+                  if nextThisIdx in gInst.illuminatedCornersIdx and not (
+                        nextThisIdx+N[1] in gInst.illuminatedCornersIdx and
+                        nextThisIdx+N[1]+1 in gInst.illuminatedCornersIdx and
+                        nextThisIdx+1 in gInst.illuminatedCornersIdx):
+   #                  print("<<<",thisIdx,thisIdx%N[0],thisIdx//N[0]) 
+                     forceTerminate=False
+               # check that forcing termination won't result in a zero-length
+               # grid point
+               if newSummation[1]==1:
+                  forceTerminate=False
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
                   thisIdx+N[1]+1 in gInst.illuminatedCornersIdx and
                   thisIdx+1 in gInst.illuminatedCornersIdx and
-                  thisIdx%N[0]<N[1]-1 and
+                  thisIdx%N[0]<(N[1]-1) and
                   gInst.subapMask[thisIdx//N[1],thisIdx%N[0]]!=0
                   ) and not forceTerminate:
                # continue summation 
                newSummation[0].append( thisIdx ) ; newSummation[1]+=1
             elif thisIdx in gInst.illuminatedCornersIdx:
-               # must terminate summation but include this point
-               if not (forceTerminate and shortSmmtns):
+               if not (shortSmmtns and forceTerminate):
+                  # must terminate summation but include this point
                   newSummation[0].append( thisIdx ) ; newSummation[1]+=1
                insubap=False
                smmtnsDef[0].append( newSummation )
@@ -72,7 +98,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
                # terminate summation 
                insubap=False
                smmtnsDef[0].append( newSummation )
-         if not insubap:
+         if not insubap:# and startNewSmmtn:
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
                   thisIdx+N[1]+1 in gInst.illuminatedCornersIdx and
@@ -91,8 +117,8 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
                   raise ValueError("Gone bonkers")
                smmtnsStarts[0][0].append(smmtnsNumber)
                smmtnsStarts[0][1].append(thisIdx)
-               smmtnsStarts[0][2].append(chaninsStrtNum)
-               chaninsStrtNum+=1
+               smmtnsStarts[0][2].append(smmtnsStrtNum)
+               smmtnsStrtNum+=1
 
    for i in range(N[1]+N[0]-1):
       # top right, downwards left
@@ -105,6 +131,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
       insubap=False
       for j in range(end):
          thisIdx=y*N[1]+x+j*(N[0]-1)
+#         startNewSmmtn=True
          if insubap:
             forceTerminate=False
             if type(None)!=type(maxLen):
@@ -116,23 +143,57 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
 #               if ((thisIdx%N[0])%boundary[1]==1) or\
 #                     ((thisIdx//N[0])%boundary[1]==(boundary[1]-1)):
                   # \/ horizontal/vertical boundaries, common
-               if ((thisIdx%N[0])%boundary[1]==(0)) or\
-                     ((thisIdx//N[0])%boundary[1]==0):
+# ?%^                if ((thisIdx%N[0])%boundary[0]==0) or\
+# ?%^                      ((thisIdx//N[0])%boundary[1]==0):
+               if (((thisIdx%N[0])%boundary[0]==0) or\
+                     ((thisIdx//N[0])%boundary[1]==0))\
+                  and\
+                  ( ((thisIdx//N[0])<(N[0]-1)) and
+                    ((thisIdx%N[0])>0) ):
                   # \/ diagonal boundaries
 #               if ((thisIdx%N[0])%boundary[1]==((thisIdx//N[0])%boundary[1])):
                   forceTerminate=True
+            if forceTerminate:
+               # check that forcing termination won't result in a grid
+               # point that cannot then be included
+               if shortSmmtns:
+                  if thisIdx in gInst.illuminatedCornersIdx and not (
+                        thisIdx+N[1] in gInst.illuminatedCornersIdx and
+                        thisIdx+N[1]-1 in gInst.illuminatedCornersIdx and
+                        thisIdx-1 in gInst.illuminatedCornersIdx):
+   #                  print(">>>",thisIdx,thisIdx%N[0],thisIdx//N[0]) 
+                     forceTerminate=False
+               else: 
+                  nextThisIdx=thisIdx+(N[0]-1)
+                  if nextThisIdx in gInst.illuminatedCornersIdx and not (
+                        nextThisIdx+N[1] in gInst.illuminatedCornersIdx and
+                        nextThisIdx+N[1]-1 in gInst.illuminatedCornersIdx and
+                        nextThisIdx-1 in gInst.illuminatedCornersIdx):
+   #                  print(">>>",thisIdx,thisIdx%N[0],thisIdx//N[0]) 
+                     forceTerminate=False
+               # check that forcing termination won't result in a zero-length
+               # grid point
+               if newSummation[1]==1:
+                  forceTerminate=False
+# ?%^             if ( thisIdx in gInst.illuminatedCornersIdx and
+# ?%^                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
+# ?%^                   thisIdx+N[1]-1 in gInst.illuminatedCornersIdx and
+# ?%^                   thisIdx-1 in gInst.illuminatedCornersIdx and
+# ?%^                   ((thisIdx%N[0]<(N[0]-1) and
+# ?%^                    gInst.subapMask[thisIdx//N[1],thisIdx%N[0]-1]!=0))
+# ?%^                   ) and not forceTerminate:
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
                   thisIdx+N[1]-1 in gInst.illuminatedCornersIdx and
                   thisIdx-1 in gInst.illuminatedCornersIdx and
-                  ((thisIdx%N[0]<(N[0]-1) and
+                  ((thisIdx%N[0]>0 and
                    gInst.subapMask[thisIdx//N[1],thisIdx%N[0]-1]!=0))
                   ) and not forceTerminate:
                # continue summation 
                newSummation[0].append( thisIdx ) ; newSummation[1]+=1
             elif thisIdx in gInst.illuminatedCornersIdx:
-               # must terminate summation but include this point
-               if not (forceTerminate and shortSmmtns):
+               if not (shortSmmtns and forceTerminate):
+                  # must terminate summation but include this point
                   newSummation[0].append( thisIdx ) ; newSummation[1]+=1
                insubap=False
                smmtnsDef[1].append( newSummation )
@@ -140,7 +201,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
                # terminate summation 
                insubap=False
                smmtnsDef[1].append( newSummation )
-         if not insubap:
+         if not insubap:# and startNewSmmtn:
             if ( thisIdx in gInst.illuminatedCornersIdx and
                   thisIdx+N[1] in gInst.illuminatedCornersIdx and
                   thisIdx+N[1]-1 in gInst.illuminatedCornersIdx and
@@ -165,14 +226,14 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
                   # should never happen
                   raise ValueError("Gone bonkers")
                else:
-                  smmtnsStarts[1][2].append(chaninsStrtNum)
-                  chaninsStrtNum+=1
+                  smmtnsStarts[1][2].append(smmtnsStrtNum)
+                  smmtnsStrtNum+=1
                   
                # \/ and store which summation we are talking about
                smmtnsStarts[1][0].append(smmtnsNumber)
                smmtnsStarts[1][1].append(thisIdx)
 
-   smmtnsStarts[-1]=chaninsStrtNum
+   smmtnsStarts[-1]=smmtnsStrtNum
    return smmtnsNumber, smmtnsDef, smmtnsStarts
 
 def smmtnsMapping( smmtnsDef, gInst ):
@@ -233,6 +294,16 @@ def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
    # with the value being the scaling relative to the summation-offset grids.
    # Thus very small values weight the summation-offset grids solution, whereas
    # very large values weight the summation intermediate-grid solution.
+
+   # NB There is a missing piece of information which is that for bounded
+   #  but non-short summations, there can be an overlap between summations in
+   #  the same direction: the end of one will touch the other. If this was
+   #  actually implemented, then it would be equivalent to continuing the
+   #  summation over the boundary -> noise propagation. It is unlikely to
+   #  actually affect matters if implemented as the noise is homogenous, but
+   #  not implementing it also eases the algorithm a bit and only removes one
+   #  step.
+
    smmtnsMatching=[]
    overlap=0
    for i in range(len(smmtnsDef[0])): # index the summations we want to align
@@ -268,7 +339,7 @@ def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
    return smmtnsMatching
 
 def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
-      sparse=False):
+      sparse=False, boundary=None):
    # If the problem is Ao+Bc=0, where o is the vector of offsets for the
    # summations, which are essentially the currently undefined start value for
    # each summation, and c is the vector of summationvalues (smmtnsV here),
@@ -279,8 +350,10 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
    # standard matrix algebra works, as long as \alpha!=0 i.e. regularisation is
    # applied.
 
-   # only need to consider unique offsets; some summations will start at the
+   # Only need to consider unique offsets; some summations will start at the
    # same point so that would overconstrain the matrix. 
+   # Also, avoid summation overlaps that correspond to crossing boundary
+   # divisions.
    avoidedRows=[] # record overlaps of summations with the same offset 
    smmtnsLen=0
    smmtnsVOffsets=[]
@@ -308,6 +381,18 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
             avoidedRows.append([i,len(smmtnsOvlps[i])])
 #            print("Avoiding row {0:d}".format(i))
             continue
+         if type(boundary)==type(1) and (
+		smmtnsDef[0][tcO[0]][0][tcO[2]]//boundary
+                !=smmtnsDef[1][tcO[1]][0][tcO[3]]//boundary):
+            avoidedRows.append([i,len(smmtnsOvlps[i])])
+            print("Vertical boundary crossing avoided {0:d}".format(i))
+            continue
+#         if type(boundary)==type(1) and (
+#		smmtnsDef[0][tcO[0]][0][tcO[2]]%boundary
+#                !=smmtnsDef[1][tcO[1]][0][tcO[3]]%boundary):
+#            avoidedRows.append([i,len(smmtnsOvlps[i])])
+#            print("Horizontal boundary crossing avoided {0:d}".format(i))
+#            continue
          if not sparse: # fill in here
             A[ i, smmtnsDefChStrts[0][2][coI[0]]]+=tcO[-1]
             A[ i, smmtnsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
@@ -338,9 +423,6 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
 
 # \/ below follow two helper functions, which make it a bit easier to just
 # do hwr, although keep in mind that they may not be right for your use.
-
-from scipy.sparse.linalg import cg as spcg
-from scipy.sparse import identity as spidentity
 
 def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
       matrices=False):
@@ -380,6 +462,7 @@ def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
                numpy.linalg.inv( numpy.dot( A.T,A )
               +numpy.identity(A.shape[1])*1e-2 ), A.T ), -B )
    else:
+      from scipy.sparse import identity as spidentity
       if matrices:
          offsetEstM=(A,B)
       else:
@@ -465,48 +548,68 @@ def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
    if not sparse:
       offsetEstV=numpy.dot( offsetEstM, smmtnsV )
    else:
+      from scipy.sparse.linalg import cg as spcg
       offsetEstV=spcg( offsetEstM[0], offsetEstM[1].dot(smmtnsV) )
       if offsetEstV[1]==0:
          offsetEstV=offsetEstV[0]
       else:
          raise ValueError("Sparse CG did not converge")
    
-   smmtnsV=doHWRSmmtnsAddOffsets(
-         smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,smmtnsDefChStrts,offsetEstV)
-   
-   return doHWRSmmtnsFormatToConventional(
-         gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets),(smmtnsV,smmtnsVOffsets)
+   comp=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
+   updates=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
 
-def doHWRSmmtnsAddOffsets(smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,
-      smmtnsDefChStrts,offsetEstV):
-   #      
    # do one way...
    for x in range(len(smmtns[0])):
       toeI=x
-      smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]+=\
-            offsetEstV[toeI]
-   # ...then the other
+      for i in range((smmtnsDef[0][x][1])):
+         comp[ smmtnsDef[0][x][0][i] ]+=(smmtns[0][x][i]+offsetEstV[toeI])
+         updates[ smmtnsDef[0][x][0][i] ]+=1
+   # ...then another
    for x in range(len(smmtns[1])):
       toeI=smmtnsDefChStrts[1][2][x]
-      smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:
-              smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]+=\
-            offsetEstV[toeI]
-   return smmtnsV
+      for i in range((smmtnsDef[1][x][1])):
+         comp[ comp.shape[0]/2+smmtnsDef[1][x][0][i] ]+=\
+               (smmtns[1][x][i]+offsetEstV[toeI])
+         updates[ updates.shape[0]/2+smmtnsDef[1][x][0][i] ]+=1
+   return ( comp.reshape([2]+list(gO.n_)),
+            updates.reshape([2]+list(gO.n_)) 
+          ),(smmtnsV,smmtnsVOffsets)
+###(disabled because of unknown bug)    smmtnsV=doHWRSmmtnsAddOffsets(
+###(disabled because of unknown bug)          smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,smmtnsDefChStrts,offsetEstV)
+###(disabled because of unknown bug)     
+###(disabled because of unknown bug)    return doHWRSmmtnsFormatToConventional(
+###(disabled because of unknown bug)          gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets),(smmtnsV,smmtnsVOffsets)
 
-def doHWRSmmtnsFormatToConventional(gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets):
-   '''Create a 2D version of the summations, separate for each chain.'''
-   comp=numpy.zeros([2,gO.n_[0]*gO.n_[1]], numpy.float64)
-   numbers=numpy.zeros([gO.n_[0]*gO.n_[1]], numpy.float64)
-   for x in range(len(smmtns[0])):
-      comp[0][ smmtnsDef[0][x][0] ]=\
-         smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]
-      numbers[ smmtnsDef[0][x][0] ]+=1
-   for x in range(len(smmtns[1])):
-      comp[1][ smmtnsDef[1][x][0] ]=\
-         smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:\
-                 smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]
-      numbers[ smmtnsDef[1][x][0] ]+=1
-   return comp,numbers
+###(disabled because of unknown bug) def doHWRSmmtnsAddOffsets(smmtns,smmtnsV,smmtnsVOffsets,smmtnsDef,
+###(disabled because of unknown bug)       smmtnsDefChStrts,offsetEstV):
+###(disabled because of unknown bug)    #      
+###(disabled because of unknown bug)    # do one way...
+###(disabled because of unknown bug)    for x in range(len(smmtns[0])):
+###(disabled because of unknown bug)       toeI=x
+###(disabled because of unknown bug)       smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]+=\
+###(disabled because of unknown bug)             offsetEstV[toeI]
+###(disabled because of unknown bug)    # ...then the other
+###(disabled because of unknown bug)    for x in range(len(smmtns[1])):
+###(disabled because of unknown bug)       toeI=smmtnsDefChStrts[1][2][x]
+###(disabled because of unknown bug)       smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:
+###(disabled because of unknown bug)               smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]+=\
+###(disabled because of unknown bug)             offsetEstV[toeI]
+###(disabled because of unknown bug)    return smmtnsV
+
+###(disabled because of unknown bug) def doHWRSmmtnsFormatToConventional(gO,smmtns,smmtnsDef,smmtnsV,smmtnsVOffsets):
+###(disabled because of unknown bug)    '''Create a 2D version of the summations, separate for each chain.'''
+###(disabled because of unknown bug)    comp=numpy.zeros([2,gO.n_[0]*gO.n_[1]], numpy.float64)
+###(disabled because of unknown bug)    numbers=numpy.zeros([2,gO.n_[0]*gO.n_[1]], numpy.float64)
+###(disabled because of unknown bug)    for x in range(len(smmtns[0])):
+###(disabled because of unknown bug)       comp[0][ smmtnsDef[0][x][0] ]=\
+###(disabled because of unknown bug)          smmtnsV[smmtnsVOffsets[x]:smmtnsVOffsets[x]+smmtnsDef[0][x][1]]
+###(disabled because of unknown bug)       numbers[0, smmtnsDef[0][x][0] ]+=1
+###(disabled because of unknown bug)    for x in range(len(smmtns[1])):
+###(disabled because of unknown bug)       comp[1][ smmtnsDef[1][x][0] ]=\
+###(disabled because of unknown bug)          smmtnsV[smmtnsVOffsets[x+len(smmtns[0])]:\
+###(disabled because of unknown bug)                  smmtnsVOffsets[x+len(smmtns[0])]+smmtnsDef[1][x][1]]
+###(disabled because of unknown bug)       numbers[1, smmtnsDef[1][x][0] ]+=1
+###(disabled because of unknown bug)    return comp,numbers
 
 def gradientsManagement(gradsV,gO,f=3,verbose=False):
    """Analyse the gradients and examine if any exceed the expected variance
@@ -581,7 +684,7 @@ def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
          doHWRIntegration( gradsV, smmtnsDef, gO, offsetEstM, smmtnsDefChStrts,
                smmtnsMap, sparse )
    #
-   hwrV=((comp[0]+comp[1])*(numbers+1e-9)**-1.0
+   hwrV=((comp[0]+comp[1])*(numbers[0]+numbers[1]+1e-9)**-1.0
             ).ravel()[gO.illuminatedCornersIdx]
    if doWaffleReduction:
       globalWV=localWaffle(-1,gO)
@@ -596,27 +699,150 @@ def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
 if __name__=="__main__":
 
    import pdb # Python debugger
-   import abbot.phaseCovariance
    import abbot.continuity
    import time
-   import matplotlib.pyplot as pyp, numpy.ma as ma
+   import numpy.ma as ma
+
+   def doPlots(thisHWRViz,thisTitle):
+      import matplotlib.pyplot as pyp
+      pyp.figure()
+      pyp.spectral()
+      blank=numpy.zeros([2]+gInst.n_)
+      for i in smmtnsDef[0]: blank[0].ravel()[ i[0] ]=i[-1]%4
+      for i in smmtnsDef[1]: blank[1].ravel()[ i[0] ]=i[-1]%4
+
+      for c in (0,1):
+         pyp.subplot(3,4,c+1)
+         pyp.title("def:smmtns{0:1d}".format(c+1))
+         pyp.imshow( ma.masked_array(blank[c],pupAp==0),
+               origin='bottom',vmin=0 )
+      blank2=numpy.zeros([2]+gInst.n_)-10
+      for dirn in (0,1):
+         for i in range(len(smmtnsDef[dirn])):
+            blank2[dirn].ravel()[ smmtnsDef[dirn][i][0] ]=smmtns[dirn][i]
+            pass
+
+      for c in (0,1):
+         pyp.subplot(3,4,c+1+2)
+         pyp.title("smmtns{0:1d}".format(c+1))
+         pyp.imshow( ma.masked_array(blank2[c],pupAp==0),
+               origin='bottom' )
+
+      pyp.subplot(3,4,5)
+      pyp.imshow( rdmViz, origin='bottom',
+            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
+      pyp.xlabel("orig")
+      pyp.colorbar()
+      pyp.subplot(3,4,6)
+      pyp.imshow( compViz[0], origin='bottom',
+            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
+      pyp.xlabel("smmtns1")
+      pyp.colorbar()
+      pyp.subplot(3,4,7)
+      pyp.imshow( compViz[1], origin='bottom',
+            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
+      pyp.xlabel("smmtns2")
+      pyp.subplot(3,4,8)
+      pyp.imshow( thisHWRViz, origin='bottom',
+            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
+      pyp.xlabel("smmtns1&2")
+      pyp.colorbar()
+
+      pyp.subplot(3,4,9)
+      pyp.imshow( ((rdmViz-thisHWRViz)),
+            origin='bottom',
+            vmin=(rdmViz.ravel().min()),
+            vmax=(rdmViz.ravel().max()))
+      pyp.xlabel("orig-smmtns1&2")
+      pyp.colorbar()
+      pyp.gcf().get_axes()[-1].set_ylabel("nb actual scale")
+
+      pyp.subplot(3,4,10)
+      pyp.imshow( numpy.log10(abs(rdmViz-compViz[0])), origin='bottom',
+            vmin=-2+numpy.log10(rdmViz.ravel().max()),
+            vmax=numpy.log10(rdmViz.ravel().max()))
+      pyp.xlabel("orig-smmtns1")
+      pyp.subplot(3,4,11)
+      pyp.imshow( numpy.log10(abs(rdmViz-compViz[1])), origin='bottom',
+            vmin=-2+numpy.log10(rdmViz.ravel().max()),
+            vmax=numpy.log10(rdmViz.ravel().max()))
+      pyp.xlabel("orig-smmtns2")
+      pyp.subplot(3,4,12)
+      pyp.imshow( numpy.log10(abs(rdmViz-thisHWRViz)),
+            origin='bottom',
+            vmin=-2+numpy.log10(rdmViz.ravel().max()),
+            vmax=numpy.log10(rdmViz.ravel().max()))
+      pyp.xlabel("orig-smmtns1&2")
+      pyp.colorbar()
+      pyp.gcf().get_axes()[-1].set_ylabel("nb log10 scale")
+
+      pyp.figure()
+      pyp.title("Summation starts, blue circles & red dots")
+      pyp.imshow( rdmViz.mask, vmin=-1, vmax=0.5, origin='bottom', cmap='gray' )
+      sStarts=[];sAll=[]
+      for x in smmtnsDef[1]:
+         sStarts.append( x[0][0] )
+         sAll+=x[0]
+      pyp.plot( numpy.array(sAll)%N[0],
+                numpy.array(sAll)//N[0], 'k,')
+      pyp.plot( numpy.array(sStarts)%N[0],
+                numpy.array(sStarts)//N[0], 'o',
+                  markerfacecolor='none', markeredgecolor='b',
+                  markeredgewidth=1 )
+      sStarts=[];sAll=[]
+      for x in smmtnsDef[0]:
+         sStarts.append( x[0][0] )
+         sAll+=x[0]
+      pyp.plot( numpy.array(sAll)%N[0],
+                numpy.array(sAll)//N[0], 'k,')
+      pyp.plot( numpy.array(sStarts)%N[0],
+                numpy.array(sStarts)//N[0], 'r.' )
+      pyp.axis([-0.5,N[0]-0.5]*2)
+      pyp.figure()
+      pyp.subplot(3,2,1)
+      pyp.imshow( thisHWRViz, vmin=(rdmViz.ravel().min()),
+            vmax=(rdmViz.ravel().max())) ; pyp.colorbar()
+      pyp.title(thisTitle)
+      pyp.subplot(3,2,2+1)
+      pyp.imshow( rdmViz-thisHWRViz ) ; pyp.colorbar()
+      pyp.title("residual")
+      pyp.subplot(3,2,4+1)
+      ps=abs(numpy.fft.fft2(rdmViz-thisHWRViz))
+      pyp.imshow( ps, vmax=ps.max(),vmin=0 )
+      pyp.colorbar()
+      pyp.title("PS(orig-{0:s})".format(thisTitle))
+      #
+      if 'invViz' in dir():
+         pyp.subplot(3,2,2)
+         pyp.imshow( invViz, vmin=(rdmViz.ravel().min()),
+               vmax=(rdmViz.ravel().max()) ) ; pyp.colorbar() 
+         pyp.title("mmse")
+         pyp.subplot(3,2,2+2)
+         pyp.imshow( rdmViz-invViz ) ; pyp.colorbar()
+         pyp.title("residual")
+         pyp.subplot(3,2,4+2)
+         pyp.imshow( abs(numpy.fft.fft2(rdmViz-invViz)) , vmax=ps.max(),vmin=0 )
+         pyp.colorbar()
+         pyp.title("PS(orig-mmse)")
+
+      pyp.waitforbuttonpress()
 
 # \/ configuration here_______________________ 
-   N=[80,0] ; #N[1]=(N[0]*6)//39. # size
+   N=[32,4] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=4*r0#N[0]/3.0
-   noDirectInv=1#False # if true, don't attempt MMSE
+   noDirectInv=False # if true, don't attempt MMSE
    doSparse=0
-   smmtnPeriodicBound=[None,16,8,4,N[0]+1][3]# optional 
+   smmtnPeriodicBound=[None,16,8,4,N[0]+1][2]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=0.5#5e-1 # multiplier of gradient noise
-   smmtnOvlpType=0.0    # 0=direct x-over, 1=intermediate x-over
+   gradNoiseVarScal=0.5 # multiplier of gradient noise
+   smmtnOvlpType=0.1    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
    dopinv=False 
-   doShortSmmtns=False # True means do not include summation bounday truncation overlaps
+   doShortSmmtns=0#False # True means do not include summation bounday truncation overlaps
    disableNoiseReduction=1#False
-   contLoopBoundaries=[ N[0]+1, smmtnPeriodicBound ][1]
-   laplacianSmoother=1e-9
+   contLoopBoundaries=[ N[0]+1, N[0]/2, smmtnPeriodicBound ][0]
+   laplacianSmoother=1e-6
    fractionalZeroingoeM=0 # always keep this as zero 
       # (fraction of max{offsetEstM} below which to zero)
 # /\ _________________________________________ 
@@ -647,6 +873,7 @@ if __name__=="__main__":
    print(" doSparse={0:d}".format(doSparse>0)) 
    print(" noDirectInv={0:d}".format(noDirectInv>0)) 
    print(" dopinv={0:d}".format(dopinv>0)) 
+   print(" shortSmmtns={0:d}".format(doShortSmmtns>0)) 
 
    if doSparse:
       class counter(object):
@@ -658,12 +885,13 @@ if __name__=="__main__":
          (numpy.arange(N[0])-(N[0]-1)/2.)**2.0, 
          (numpy.arange(N[0])-(N[0]-1)/2.)**2.0 )
    pupAp=((cds<=(N[0]/2)**2)*(cds>(N[1]/2)**2))*1
-#   pupAp=numpy.ones([N[0]]*2) # filled in pupil
+   #pupAp=numpy.ones([N[0]]*2) # filled in pupil
    #   # \/ spider
    #pupAp[ pupAp.shape[0]//2-1:pupAp.shape[0]//2+2 ]=0
    #pupAp[ :, pupAp.shape[1]//2-1:pupAp.shape[1]//2+2 ]=0
 
    #   # \/ STFC logo
+   #import matplotlib.pyplot as pyp, 
    #stfc=pyp.imread(
    #      "/cfai/elite/exchange/STFC_logos/STFC/STFC.png").sum(axis=-1)
    #stfc=stfc[:,:stfc.shape[0]]<2
@@ -712,15 +940,16 @@ if __name__=="__main__":
       sys.stdout.flush()
    
    print("N,N_={0:d},{1:d}".format(gInst.n[0],gInst.n_[0]))
-   #x=gInst.illuminatedCornersIdx%gInst.n_[0]
+   x=gInst.illuminatedCornersIdx%gInst.n_[0]
    #y=gInst.illuminatedCornersIdx//gInst.n_[0]
 #   wl=8.0;ip=numpy.cos(2*numpy.pi*wl**-1.0*(x+y)*2**0.5)
-   #ip=x
+   ip=x
    #ip=numpy.zeros(len(x)) ; ip[int(numpy.random.uniform(0,len(x)))]=1
-   #rdm=ip
+   rdm=ip
    rdm=numpy.random.normal(size=gInst.numberPhases) # what to reconstruct
-   #rdm=numpy.add.outer(numpy.arange(N[0]),(N[0]-1)*0+(0)*numpy.arange(N[0])).ravel().take(
-   #   gInst.illuminatedCornersIdx ) # 45deg slope
+   rdm=numpy.add.outer(numpy.arange(N[0]),(N[0]-1)*0+(0)*numpy.arange(N[0])).ravel().take(
+      gInst.illuminatedCornersIdx ) # 45deg slope
+#>    import abbot.phaseCovariance
 #>    print("phscov.",end="") ; sys.stdout.flush()
 #>    directPCOne=abbot.phaseCovariance.covarianceDirectRegular( N[0], r0, L0 )
 #>    print(".",end="") ; sys.stdout.flush()
@@ -735,15 +964,10 @@ if __name__=="__main__":
 #>    print(".",end="") ; sys.stdout.flush()
 #>    rdm=directTestPhase.ravel().take(gInst.illuminatedCornersIdx) # redo vector
 #>    print("(done)") ; sys.stdout.flush()
-
-   # ----> begins ---->
-
-   print("smmtnsDefine...",end="") ; sys.stdout.flush()
-   ts=time.time()
-   smmtnsNumber,smmtnsDef,smmtnsDefChStrts=smmtnsDefine(\
-         gInst, boundary=[smmtnPeriodicBound]*2, maxLen=smmtnMaxLength,
-         shortSmmtns=doShortSmmtns )
-   print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
+   
+   rdmViz=ma.masked_array(numpy.zeros(comp[0].shape),pupAp==0)
+   rdmViz.ravel()[ gInst.illuminatedCornersIdx ]=rdm
+   rdmViz-=rdmViz.mean()
 
 #   if not doSparse:
 #      gradV=numpy.dot(gO, rdm)
@@ -757,6 +981,16 @@ if __name__=="__main__":
       print("...denoise (!) grads...",end="") ; sys.stdout.flush()
       gradV=noiseReductionM.dot( gradV )
    print("...",end="") ; sys.stdout.flush()
+
+   # ----> begins ----> *** MANUAL ***
+
+   print("smmtnsDefine...",end="") ; sys.stdout.flush()
+   ts=time.time()
+   smmtnsNumber,smmtnsDef,smmtnsDefChStrts=smmtnsDefine(\
+         gInst, boundary=[smmtnPeriodicBound]*2, maxLen=smmtnMaxLength,
+         shortSmmtns=doShortSmmtns )
+   print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
+
    print("rot grads...",end="") ; sys.stdout.flush()
    rgradV=rotateVectors(gradV).ravel()
    print("(done)") ; sys.stdout.flush()
@@ -803,7 +1037,7 @@ if __name__=="__main__":
 #      invchOScovM=numpy.linalg.pinv(chOScovM)
       invchOScovM=numpy.identity(A.shape[1])
       offsetEstM=numpy.dot( numpy.dot(
-         numpy.linalg.inv( numpy.dot( A.T,A )+invchOScovM*1e-2 ), A.T ), -B )
+         numpy.linalg.inv( numpy.dot( A.T,A )+invchOScovM*1e-6 ), A.T ), -B )
       if fractionalZeroingoeM>0:
          maxoeM=max(abs(offsetEstM).ravel())
          offsetEstM*=abs(offsetEstM)>=(maxoeM*fractionalZeroingoeM)
@@ -860,217 +1094,105 @@ if __name__=="__main__":
          updates[ N[0]**2+smmtnsDef[1][x][0][i] ]+=1
          pass
    print("(done)") ; sys.stdout.flush()
-
+   
    comp.resize([2]+[N[0]]*2)
    updates.resize([2]+[N[0]]*2)
    updatesViz=ma.masked_array(updates,[pupAp==0]*2)
    compViz=[ ma.masked_array(comp[i], updatesViz[i]==0) for i in (0,1) ]
+   for dirn in (0,1): compViz[dirn]-=compViz[dirn].mean()
    compBothViz=ma.masked_array(
          (1e-10+updatesViz[0]+updatesViz[1])**-1.0*(comp[0]+comp[1]), pupAp==0 )
-   rdmViz=ma.masked_array(numpy.zeros(comp[0].shape),pupAp==0)
-   rdmViz.ravel()[ gInst.illuminatedCornersIdx ]=rdm
-   rdmViz-=rdmViz.mean()
-   for dirn in (0,1): compViz[dirn]-=compViz[dirn].mean()
+   # <---- ends ------< *** MANUAL ***
+
+   # ----> begins ----> *** HELPER FN. ***
+   smmtnsDef, smmtnsDefChStrts, smmtnsMap, offsetEstM=prepHWR(
+         gInst, smmtnMaxLength,
+         [smmtnPeriodicBound]*2,
+         smmtnOvlpType, doSparse)
+   
+   compHWR, hwrV, smmtnsVs=doHWRGeneral(
+         gradV,
+         smmtnsDef,
+         gInst,
+         offsetEstM,
+         smmtnsDefChStrts,
+         smmtnsMap,
+         doWaffleReduction=0,
+         doPistonReduction=0,
+         doGradientMgmnt=0,
+         sparse=doSparse)
+
+   hwrViz=ma.masked_array(numpy.zeros(comp[0].shape),pupAp==0)
+   hwrViz.ravel()[gInst.illuminatedCornersIdx]=hwrV
+   # <---- ends ------< *** HELPER FN. ***
+
+
+   if noDirectInv:
+      print("Aborting here, not doing inversion")
+   else:
+   # >---- begins ----> *** DIRECT INV. ***
+      # try mmse inversion
+      print("mmse start...",end="") ; sys.stdout.flush()
+      lO=abbot.gradientOperator.laplacianOperatorType1(
+            pupilMask=pupAp*1,sparse=doSparse )
+      lM=lO.returnOp()
+      print("(done)") ; sys.stdout.flush()
+
+      if not doSparse:
+         print(" inversion...",end="") ; sys.stdout.flush()
+         if dopinv:
+            invO=numpy.linalg.pinv(gO,1e-6)
+         else:
+            invO=numpy.dot(
+                  numpy.linalg.inv(numpy.dot(gO.T,gO)
+                 +numpy.dot(lM.T,lM)*laplacianSmoother), gO.T)
+         print("...",end="") ; sys.stdout.flush()
+         invSol=numpy.dot(invO,gradV)
+         print("(done)") ; sys.stdout.flush()
+      else:
+         print(" sparse CG...",end="") ; sys.stdout.flush()
+         _A=gO.transpose().tocsr().dot(gO)
+         _A=_A+laplacianSmoother*lM.tocsr().dot(lM)
+         _b=gO.transpose().tocsr().dot( gradV )
+         #linalgRes=scipy.sparse.linalg.cg( _A, _b )
+         thiscounter=counter()
+         linalgRes=scipy.sparse.linalg.cg(
+               _A, _b, callback=thiscounter.cb )
+         print("(number of loops={0:3d})".format(thiscounter.n),end="")
+         if linalgRes[1]!=0:
+            raise ValueError("CG failed, returned {0:d} rather than 0."+
+                  "Stopping.".format(linalgRes[0]))
+         else:
+            invSol=linalgRes[0]
+         print("(done)") ; sys.stdout.flush()
+      
+      invViz=rdmViz.copy() ; invViz.ravel()[gInst.illuminatedCornersIdx]=invSol
+   # <---- ends ------< *** DIRECT INV. ***
+
+
 
    print("rdm.var={0:5.3f}".format(rdmViz.var()))
    print("comp.var={0:5.3f}".format(compBothViz.var()))
+   print("hwr.var={0:5.3f}".format(hwrViz.var()))
    print("(rdm-comp).var={0:7.5f}".format((rdmViz-compBothViz).var()))
+   print("(rdm-hwr).var={0:7.5f}".format((rdmViz-hwrViz).var()))
+   if 'invViz' in dir():
+      print("(rdm-mmse).var={0:7.5f}".format((rdmViz-invViz).var()))
 
+   if len(raw_input("plot compBothViz? (blank=don't)"))>0:
+      doPlots(compBothViz,"cbHWR")
+   if len(raw_input("plot hwrViz? (blank=don't)"))>0:
+      doPlots(hwrViz,"HWR")
 
-#"""    # try removing highest frequencies
-#"""    freqLimits= gInst.n_[0]/2-3, gInst.n_[0]/2
-#""" 
-#"""    cds=(gInst.illuminatedCornersIdx%gInst.n_[0],
-#"""         gInst.illuminatedCornersIdx//gInst.n_[0])
-#"""    eiBasis=lambda x,y :\
-#"""          numpy.exp(1j*2*numpy.pi*(x*gInst.n_[0]**-1.0*cds[0]
-#"""             +y*gInst.n_[1]**-1.0*cds[1]))
-#"""    modesToRemove=[]
-#"""    for i in numpy.arange( freqLimits[0], freqLimits[1]+1, 1 ):
-#"""       for j in numpy.arange( freqLimits[0], freqLimits[1]+1, 1 ):
-#"""          modesToRemove.append( eiBasis(i,j).real )
-#"""          modesToRemove.append( eiBasis(i,j).imag )
-#"""    modesToRemove=numpy.array(modesToRemove)[:-1] # last should be zero
-#"""    modeNormV=numpy.dot( modesToRemove, modesToRemove.T ).diagonal()
-#"""    modesToRemove*=numpy.where(
-#"""          abs(modeNormV)<1, 0, (modeNormV+1e-10)**-0.5).reshape([-1,1])
-#"""    modeV=numpy.dot( modesToRemove,
-#"""          compBothViz.ravel()[ gInst.illuminatedCornersIdx ].data )
-#"""    compBoth_HFremoved_Viz=compBothViz.copy()
-#"""    compBoth_HFremoved_Viz.ravel()[gInst.illuminatedCornersIdx]-=(
-#"""          modesToRemove*modeV.reshape([-1,1])).sum(axis=0)
-#"""    print("(rdm-comp_hfremoved).var={0:5.3f}".format(
-#"""          (rdmViz-compBoth_HFremoved_Viz).var()))
-#"""    pyp.figure()
-#"""    pyp.subplot(3,2,1)
-#"""    pyp.imshow( compBothViz, vmin=(rdmViz.ravel().min()),
-#"""          vmax=(rdmViz.ravel().max())) ; pyp.colorbar()
-#"""    pyp.title("Before HF removal")
-#"""    pyp.subplot(3,2,2+1)
-#"""    pyp.imshow( rdmViz-compBothViz ) ; pyp.colorbar()
-#"""    pyp.title("residual")
-#"""    pyp.subplot(3,2,4+1)
-#"""    pyp.imshow( abs(numpy.fft.fft2(rdmViz-compBothViz)) )
-#"""    pyp.title("PS(orig-hwr,no nf)")
-#"""    pyp.colorbar()
-#"""    #
-#"""    pyp.subplot(3,2,2)
-#"""    pyp.imshow( compBoth_HFremoved_Viz, vmin=(rdmViz.ravel().min()),
-#"""          vmax=(rdmViz.ravel().max()) ) ; pyp.colorbar() 
-#"""    pyp.subplot(3,2,2+2)
-#"""    pyp.imshow( rdmViz-compBoth_HFremoved_Viz ) ; pyp.colorbar()
-#"""    pyp.title("residual")
-#"""    pyp.title("After HF removal")
-#"""    pyp.subplot(3,2,4+2)
-#"""    pyp.imshow( abs(numpy.fft.fft2(rdmViz-compBoth_HFremoved_Viz)) )
-#"""    pyp.title("PS(orig-hwr,no nf)")
-#"""    pyp.colorbar()
+   # plot statistics of number of summations in the grid points 
+   summationLocs=[]
+   for smmtnDirs in smmtnsDef:
+      for smmtns in smmtnDirs: summationLocs+=smmtns[0]
 
-   if noDirectInv:
-      raise RunTimeError("Aborting here, not doing inversion")
-   # try mmse inversion
-   print("mmse start...",end="") ; sys.stdout.flush()
-   lO=abbot.gradientOperator.laplacianOperatorType1(
-         pupilMask=pupAp*1,sparse=doSparse )
-   lM=lO.returnOp()
-   print("(done)") ; sys.stdout.flush()
+   template=numpy.zeros(gInst.n_,'i').ravel()
+   for smmtnIdx in summationLocs: template[smmtnIdx]+=1
 
-   if not doSparse:
-      print(" inversion...",end="") ; sys.stdout.flush()
-      if dopinv:
-         invO=numpy.linalg.pinv(gO,1e-6)
-      else:
-         invO=numpy.dot(
-               numpy.linalg.inv(numpy.dot(gO.T,gO)
-              +numpy.dot(lM.T,lM)*laplacianSmoother), gO.T)
-      print("...",end="") ; sys.stdout.flush()
-      invSol=numpy.dot(invO,gradV)
-      print("(done)") ; sys.stdout.flush()
-   else:
-      print(" sparse CG...",end="") ; sys.stdout.flush()
-      _A=gO.transpose().tocsr().dot(gO)
-      _A=_A+laplacianSmoother*lM.tocsr().dot(lM)
-      _b=gO.transpose().tocsr().dot( gradV )
-      #linalgRes=scipy.sparse.linalg.cg( _A, _b )
-      thiscounter=counter()
-      linalgRes=scipy.sparse.linalg.cg(
-            _A, _b, callback=thiscounter.cb )
-      print("(number of loops={0:3d})".format(thiscounter.n),end="")
-      if linalgRes[1]!=0:
-         raise ValueError("CG failed, returned {0:d} rather than 0."+
-               "Stopping.".format(linalgRes[0]))
-      else:
-         invSol=linalgRes[0]
-      print("(done)") ; sys.stdout.flush()
-   
-   invViz=rdmViz.copy() ; invViz.ravel()[gInst.illuminatedCornersIdx]=invSol
-   print("(rdm-mmse).var={0:7.5f}".format((rdmViz-invViz).var()))
-
-   if len(raw_input("plot? (blank=don't)"))>0:
-      pyp.spectral()
-      blank=numpy.zeros([2]+gInst.n_)
-      for i in smmtnsDef[0]: blank[0].ravel()[ i[0] ]=i[-1]%4
-      for i in smmtnsDef[1]: blank[1].ravel()[ i[0] ]=i[-1]%4
-
-      for c in (0,1):
-         pyp.subplot(3,4,c+1)
-         pyp.title("def:smmtns{0:1d}".format(c+1))
-         pyp.imshow( ma.masked_array(blank[c],pupAp==0),
-               origin='bottom',vmin=0 )
-      blank2=numpy.zeros([2]+gInst.n_)-10
-      for dirn in (0,1):
-         for i in range(len(smmtnsDef[dirn])):
-            blank2[dirn].ravel()[ smmtnsDef[dirn][i][0] ]=smmtns[dirn][i]
-            pass
-
-      for c in (0,1):
-         pyp.subplot(3,4,c+1+2)
-         pyp.title("smmtns{0:1d}".format(c+1))
-         pyp.imshow( ma.masked_array(blank2[c],pupAp==0),
-               origin='bottom' )
-
-      pyp.subplot(3,4,5)
-      pyp.imshow( rdmViz, origin='bottom',
-            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("orig")
-      pyp.colorbar()
-      pyp.subplot(3,4,6)
-      pyp.imshow( compViz[0], origin='bottom',
-            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("smmtns1")
-      pyp.colorbar()
-      pyp.subplot(3,4,7)
-      pyp.imshow( compViz[1], origin='bottom',
-            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("smmtns2")
-      pyp.subplot(3,4,8)
-      pyp.imshow( compBothViz, origin='bottom',
-            vmin=rdmViz.ravel().min(), vmax=rdmViz.ravel().max())
-      pyp.xlabel("smmtns1&2")
-      pyp.colorbar()
-
-      pyp.subplot(3,4,9)
-      pyp.imshow( ((rdmViz-compBothViz)),
-            origin='bottom',
-            vmin=(rdmViz.ravel().min()),
-            vmax=(rdmViz.ravel().max()))
-      pyp.xlabel("orig-smmtns1&2")
-      pyp.colorbar()
-      pyp.gcf().get_axes()[-1].set_ylabel("nb actual scale")
-
-      pyp.subplot(3,4,10)
-      pyp.imshow( numpy.log10(abs(rdmViz-compViz[0])), origin='bottom',
-            vmin=-2+numpy.log10(rdmViz.ravel().max()),
-            vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-smmtns1")
-      pyp.subplot(3,4,11)
-      pyp.imshow( numpy.log10(abs(rdmViz-compViz[1])), origin='bottom',
-            vmin=-2+numpy.log10(rdmViz.ravel().max()),
-            vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-smmtns2")
-      pyp.subplot(3,4,12)
-      pyp.imshow( numpy.log10(abs(rdmViz-compBothViz)),
-            origin='bottom',
-            vmin=-2+numpy.log10(rdmViz.ravel().max()),
-            vmax=numpy.log10(rdmViz.ravel().max()))
-      pyp.xlabel("orig-smmtns1&2")
-      pyp.colorbar()
-      pyp.gcf().get_axes()[-1].set_ylabel("nb log10 scale")
-
-      pyp.figure()
-      pyp.title("Summation starts, blue circles & red dots")
-      pyp.imshow( rdmViz.mask, vmin=-1, vmax=0.5, origin='bottom', cmap='gray' )
-      pyp.plot( [ x[0][0]%N[0] for x in smmtnsDef[1] ],
-                  [ x[0][0]//N[0] for x in smmtnsDef[1] ], 'o',
-                  markerfacecolor='none', markeredgecolor='b',
-                  markeredgewidth=1 )
-      pyp.plot( [ x[0][0]%N[0] for x in smmtnsDef[0] ],
-                  [ x[0][0]//N[0] for x in smmtnsDef[0] ], 'r.' )
-      pyp.axis([-0.5,N[0]-0.5]*2)
-      pyp.figure()
-      pyp.subplot(3,2,1)
-      pyp.imshow( compBothViz, vmin=(rdmViz.ravel().min()),
-            vmax=(rdmViz.ravel().max())) ; pyp.colorbar()
-      pyp.title("hwr")
-      pyp.subplot(3,2,2+1)
-      pyp.imshow( rdmViz-compBothViz ) ; pyp.colorbar()
-      pyp.title("residual")
-      pyp.subplot(3,2,4+1)
-      ps=abs(numpy.fft.fft2(rdmViz-compBothViz))
-      pyp.imshow( ps, vmax=ps.max(),vmin=0 )
-      pyp.colorbar()
-      pyp.title("PS(orig-hwr)")
-      #
-      pyp.subplot(3,2,2)
-      pyp.imshow( invViz, vmin=(rdmViz.ravel().min()),
-            vmax=(rdmViz.ravel().max()) ) ; pyp.colorbar() 
-      pyp.title("mmse")
-      pyp.subplot(3,2,2+2)
-      pyp.imshow( rdmViz-invViz ) ; pyp.colorbar()
-      pyp.title("residual")
-      pyp.subplot(3,2,4+2)
-      pyp.imshow( abs(numpy.fft.fft2(rdmViz-invViz)) , vmax=ps.max(),vmin=0 )
-      pyp.colorbar()
-      pyp.title("PS(orig-mmse)")
-
-      pyp.waitforbuttonpress()
+   template=template[gInst.illuminatedCornersIdx] # only choose the relevant points
+   print("Summations per grid point:")
+   print(" max={0:d} (expect={1:d})".format(max(template),(not doShortSmmtns)*2+2))
+   print(" min={0:d} (expect=1)".format(min(template)))
