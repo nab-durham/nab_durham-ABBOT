@@ -14,7 +14,6 @@
 from __future__ import print_function
 import abbot.gradientOperator as abbotGO
 import numpy as np
-import scipy.sparse, scipy.sparse.linalg
 
 def loopsDefine( gO, partitionPeriod=None, partitionPeriodOffset=[0,0],
       verbose=False, rotated=False ):
@@ -129,22 +128,24 @@ def loopsIntegrationMatrix( loopsDef, gO, sparse=False ):
                loopInt['counter']+=1
       if sparse: loopInt['i'].append(loopInt['counter'])
    if sparse:
+      import scipy.sparse, scipy.sparse.linalg
       loopIntM=scipy.sparse.csr_matrix(
             (loopInt['dat'],loopInt['col'],loopInt['i']),[Nloops,Ngradients],
             dtype=np.float32)
    return loopIntM
 
 def loopsNoiseMatrices( loopIntM, gO ):
-   if type(loopIntM)==scipy.sparse.csr.csr_matrix:
-      sparse=True
-   else:
+   if type(loopIntM)==np.ndarray:
       sparse=False
+   else:
+      sparse=True
    if not sparse:
       # define the inverse
       ilIM=np.dot(
          np.linalg.inv( np.dot(loopIntM.T,loopIntM)
                +np.identity(loopIntM.shape[1])*0.1), loopIntM.T )
    else:
+      import scipy.sparse, scipy.sparse.linalg
       luliTliM=scipy.sparse.linalg.splu(
             loopIntM.T.dot(loopIntM)+
             0.1*scipy.sparse.csr_matrix(
@@ -226,6 +227,7 @@ if __name__=="__main__":
 #<sp>   lIi=numpy.array([ x.nonzero()[0] for x in loopIntM ])
 #<sp>   lIv=numpy.array([
 #<sp>         loopIntM[i].take(lIi[i]) for i in range(loopIntM.shape[0]) ])
+#<sp>   import scipy.sparse, scipy.sparse.linalg
 #<sp>   sloopIntM=scipy.sparse.csr_matrix(
 #<sp>         (lIv.ravel(),lIi.ravel(),
 #<sp>          numpy.arange(loopIntM.shape[0]+1)*8),loopIntM.shape)
