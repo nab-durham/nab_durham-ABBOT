@@ -1,0 +1,399 @@
+\documentclass[a4paper]{article}
+
+% Assumes A4 paper
+%
+\setlength{\textheight}{20cm}
+\setlength{\textwidth}{16cm}
+\setlength{\hoffset}{-1.0cm}
+\setlength{\footskip}{2.5cm}
+\setlength{\headsep}{1.5cm}
+\setlength{\voffset}{-1.5cm}
+\usepackage{amsmath}
+%\usepackage{url}
+\usepackage{graphicx}
+
+\title{Technical note: continuity matrix for estimating slope-sensor 
+noise and reduction thereof for algorithm-based reconstruction}
+\author{Nazim Ali Bharmal\\
+n.a.bharmal@durham.ac.uk}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+\begin{itemize}
+   \item {\bf AIM:} To show that noise in a measurement of slopes with a WFS
+   that is noise-uncorrelated can be estimated using the prior that wavefront
+   is continuous but slopes are not necessarily so, and then removed using the
+   same approach as estimation, with extension to sparse representation.
+
+   \item {\bf WHY:} This work was done in the context of noise reduction for
+   HWR\footnote{a.k.a. DiCuRe}. Later it was understood that this would offer a
+   method for measurements with elongation in a SH which leads to
+   correlated-noise, and so a potential on-line method for estimating noise
+   covariance matrices.
+   
+   \item {\bf IMPORTANT:} Much was noted in a 1980 paper\footnote{J. Herrmann.
+   Least-squares wave front errors of minimum norm. J. Opt. Soc. Am.,
+   70(1):28–35, Jan 1980.} but new here is the extension to correlated-noise and
+   sparse representation.
+
+   \item {\bf RESULTS:} It works, the non-continuous noise estimated can be
+   quantified as a sparsity-dependent fraction of the total noise, but with
+   constant variance so SNR of noise estimation is invesely proportional
+   to the sparsity. Since the direct application of continuity is sparse
+   from the outset, clearly the un-sparse option is best.
+   For noise removal, the required inversion then means a trade-off between
+   sparsity and quantity eliminated leads to an optimum sparsity of {\bf ZZZ}.
+
+   \item {\bf OUTSTANDING:} No work done on the correlated-noise, the strategy
+   at present is assumed to be based on regularization in a least-squares
+   inversion.
+\end{itemize}
+
+\subsection{Unresolved issues}
+
+\begin{enumerate}
+  \item {\bf .}  
+\end{enumerate}
+
+\section{Introduction}
+
+From a slope WFS which is the current type of interest with modern AO, there is
+associated noise per slope per sub-aperture. This noise may be uncorrelated,
+for example when the spot shape is round so that there is no difference is
+orthogonal spot motion. Alternately, if the spots have structure such as
+elongation then their motion will have a smaller signal in the directions
+of maximum elongation and so effectively larger noise in that direction. In 
+this latter case, noise on slopes is uncorrelated along and perpendicular
+to the elongation direction and so instead does become correlated.
+
+It was pointed by Herrmann (1980) that since a wavefront is continuous,
+the slopes must be correlated in the two orthogonal directions regardless
+of the underlying statistical description of the wavefront. Slope noise
+however does not require this property. Knowledge of this difference can allow
+for a straightforward estimate of the slope noise since integration of slopes
+about 
+
+if a model is made equivalent to the
+Fried geometry, such that 
+
+
+A conventional interaction (a.k.a. poke) matrix is formed by,
+
+\begin{equation}
+   \mathnormal{P}=\mathnormal{R}+\mathnormal{\epsilon},
+\end{equation}
+
+where $\mathnormal{P}$ is the interaction matrix and $\mathnormal{R}$ is the
+measurement matrix, with $\mathnormal{\epsilon}$ being the noise so that the
+quantity used is the sum of these last two terms. This equation is true only
+when the actuator command vectors (that can form a matrix, $\mathnormal{V}$) are
+set so that only one has a non-zero value per column of the matrix
+i.e.~$\mathnormal{V}\equiv V_{amp}\mathnormal{I}$. More generally it can be written
+that,
+
+\begin{equation}
+   \mathnormal{G}\mathnormal{V}=\mathnormal{R}+\mathnormal{\epsilon},
+   \label{eqn:gen}
+\end{equation}
+
+where now our goal is to discover $\mathnormal{G}$ which is the matrix that
+describes the response of the wavefront sensor for a given actuator command
+vector. Subsequently the command matrix (not, technically, the reconstruction
+matrix) called $\mathnormal{G}^{\dagger}$ can be derived as,
+
+\begin{equation}
+   \mathnormal{G}^{\dagger}=\mathnormal{V}\mathnormal{R}^{\dagger}.
+   \label{eqn:gplus}
+\end{equation}
+
+The noise means that,
+
+\begin{equation}
+   \mathnormal{G}^{\dagger}\rightarrow\mathnormal{V}\left(
+      \mathnormal{R}+\mathnormal{\epsilon}\right)^{\dagger}.
+   \label{eqn:noisygplus}
+\end{equation}
+
+\section{Theory}
+
+To minimize the effect of noise, instead consider finding
+$\mathnormal{G}=\mathnormal{R}\mathnormal{V}^{\dagger}$ leading to,
+
+\begin{eqnarray}
+   \mathnormal{G'}&=&
+      \left(\mathnormal{R}+\mathnormal{\epsilon}\right)\mathnormal{V}^{\dagger},\\
+   \delta\mathnormal{G}&=&\mathnormal{\epsilon}\mathnormal{V}^{\dagger}.
+\end{eqnarray}
+
+Then it can be said an optimal set of measurements ($\mathnormal{R}$) results in a
+`maximum' value for $\mathnormal{G}$ relative to $\delta\mathnormal{G}$ such that
+$\mathnormal{G'}$ is as close to $\mathnormal{G}$ as possible.
+
+An appropriate characterization of $\mathnormal{G}$ is the operator norm,
+
+\begin{equation*}
+   \|\mathnormal{A}\|_{o}= \|\mathnormal{A}\mathnormal{x}\|_{2},
+\end{equation*}
+
+where $\mathnormal{x}$ is an arbitrary vector (usually with 2-norm equal to one)
+and the 2-norm is defined for a vector by $\|x\|_{2}=x.x$. Then it can stated
+that the requirement for minimum effect of noise (for a fixed noise level) is
+to find $\mathnormal{R}$ ($\mathnormal{V}$ is dependent only on this matrix) such that,
+
+\begin{equation*}
+     {\left\|\mathnormal{R}\mathnormal{V}^{\dagger}\right\|_{o}}
+     \left/
+     {\left\langle
+      \left\|\mathnormal{\epsilon}\mathnormal{V}^{\dagger}\right\|_{o}
+      \right\rangle}
+     \right.=
+   \sigma_\epsilon^{-2}\,\mathrm{max}\left\{
+     {\left\|\mathnormal{R}\mathnormal{V}^{\dagger}\right\|_{o}}
+     \left/
+     {\left\|\mathnormal{V}^{\dagger}\right\|_{o}}
+     \right.
+   \right\}.
+\end{equation*}
+
+To proceed further, the Hilbert-Schmidt norm and its relation to the operator
+norm is introduced,
+
+\begin{eqnarray*}
+   \|\mathnormal{A}\|_{HS}&=& \left( \sum_{i,j} A_{ij}^2 \right)^{1/2},\\
+   &&\|\mathnormal{A}\|_{o}\le\|\mathnormal{A}\|_{HS}\le\sqrt{2}N\|\mathnormal{A}\|_{o},\\
+\end{eqnarray*}
+
+where $2N^{2}$ is the number of entries in $\mathnormal{A}$, so the HS norm is
+bound. (For AO interaction matrices, $N$ is the number of actuators and so this
+is why this terminology is used here.) A further useful relation is that,
+
+\begin{equation*}
+   \|\mathnormal{A}\mathnormal{B}\|_{HS}=\|\mathnormal{A}\|_{HS}\|\mathnormal{B}\|_{HS}.
+\end{equation*}
+
+So it is {\it postulated} that the desired maximization is instead of, and
+assuming that $\mathnormal{V}^{\dagger}$ does not span the null-space of
+$\mathnormal{R}$,
+
+\begin{eqnarray}
+     {\left\|\mathnormal{R}\mathnormal{V}^{\dagger}\right\|_{HS}}
+     \left/
+     {\left\|\mathnormal{V}^{\dagger}\right\|_{HS}}.
+     \right. &=&
+   \mathrm{max}\left\{
+     {\left\|\mathnormal{R}\mathnormal{V}^{\dagger}\right\|_{HS}}
+     \left/
+     {\left\|\mathnormal{V}^{\dagger}\right\|_{HS}}
+     \right.
+   \right\} \nonumber \\
+     &=&
+   \sigma_\epsilon^{-1}\mathrm{max}\left\{
+     {\left\|\mathnormal{R}\right\|_{HS}} \right\} \label{eqn:cond2} .
+\end{eqnarray}
+
+In other words, the na\"{i}ve statement that the measurement matrix
+$\mathnormal{R}$ which has highest SNR is that with entries that are as large as
+possible, does indeed lead to the solution outlined in equation
+\ref{eqn:cond2}. In the ideal scenario, $\mathnormal{R}$ would contain entries
+which correspond to positive/negative limits of the WFS range.
+
+The contrast with Kasper {\it et~al.} is that their requirement is that
+$\mbox{det}\left\{\mathnormal{V}\right\}$ should be maximized and the condition
+number of the same matrix be equal to one.
+
+\section{Approach}
+
+To obtain the maximal measurement matrix, while this is more straightforward
+for WFSs that have a 1:1 mapping between sub-aperture and actuator command,
+this is not the case for slope sensors where there are (in the Fried geometry)
+2 slopes dependent on 4 actuators. Furthermore, there are possible
+arrangements of the actuator commands which result in no signal and are so in
+the null space of $\mathnormal{G}$ e.g.~diagonally opposite actuators (forming a
+pair) having equal commanded values while each pair has different command
+values. The interest here is to form $\mathnormal{R}$ and then infer $\mathnormal{V}$.
+
+The approach is to specify half of the slopes in $\mathnormal{R}$ to begin with,
+
+%\begin{math}
+\begin{displaymath} 
+\mathnormal{R} = \left(
+   \begin{array}{ccc} 
+      R_{11} & \ldots & R_{1N} \\ 
+      \vdots & \ddots & \vdots \\ 
+      R_{m/2\,1} & \ldots & R_{m/2\,N}  \\\hline
+      0 & \ldots & 0 \\ 
+      \vdots & \ddots & \vdots \\ 
+      0 & \ldots & 0 
+   \end{array} \right) = \left[
+   \begin{array}{c} 
+      \mathnormal{R}_U \\ 0%\mathnormal{R}_L
+   \end{array} \right]
+\end{displaymath} 
+%\end{math}
+
+Let it be assumed that the range limit is $\pm1$. Then given a fully populated
+$\mathnormal{R}$, wavefront continuitity implies,
+
+\begin{equation}
+   \mathnormal{L}\mathnormal{R}=0=\left[
+      \mathnormal{L}_U\,\mathnormal{L}_L
+   \right]\left[
+   \begin{array}{c} 
+      \mathnormal{R}_U \\ \mathnormal{R}_L
+   \end{array} \right],
+\end{equation}
+
+where $\mathnormal{L}$ is the loop integration operator. This comes from noise
+reduction in HWR and is a matrix that integrates loops of
+slopes\footnote{discrete curl, I think.}. Returning to a half-populated
+$\mathnormal{R}$, assuming the first (upper) set of slopes, then $\mathnormal{L}$
+can also be split and the following written,
+
+\begin{eqnarray}
+   \mathnormal{L}_U\mathnormal{R}_U+\mathnormal{L}_L\mathnormal{R}_L&=&0
+      \nonumber \\
+%   \mathnormal{L}_L\mathnormal{R}_L&=&-\mathnormal{L}_U\mathnormal{R}_U \nonumber \\
+   \mathnormal{R}_L&=&-\mathnormal{L}_L^{\dagger}\mathnormal{L}_U\mathnormal{R}_U,
+\end{eqnarray}
+
+and $\mathnormal{R}_L$ found to form $\mathnormal{R}$. This does not guarantee
+that $\mathnormal{R}_L$ consists of entries that are bounded to $\pm1$, so
+further steps are required. These are somewhat {\it adhoc} but do seem to
+produce a decent result.
+
+\subsection{Method used to achieve a suitable $\bf{R}$}
+
+\begin{enumerate}
+   \item Take the intial estimate for $\mathnormal{R}$ and binarize it such that,
+   \begin{equation*}
+      \mathnormal{R}_b=\mathrm{binarize}\left\{\mathnormal{R}\right\}=
+      \left\{ \begin{array}{ll}
+         -1 & (R_{ij}+\nu_{ij}) < 0 \\
+         +1 & (R_{ij}+\nu_{ij}) > 0,
+         \end{array} \right.
+   \end{equation*}
+    noting that the matrix $\nu$ consists of infintesimally small random values
+    to ensure exactly zero values are randomly made negative or positive.
+   \item This matrix will not have slope values consistent with wavefront
+   continuity, so an estimate can be made of the correction to slopes
+   which does ensure continuity,
+   \begin{equation*}
+      \mathnormal{R}_c=\left(\mathnormal{I}-\mathnormal{L}^{\dagger}\mathnormal{L}\right)
+         \mathrm{binarize}\left\{ \mathnormal{R} \right\}.
+   \end{equation*}
+   \item The modified measurement $\mathnormal{R}_c$ is then not guaranteed to have
+   gradients which are limited to the range $\pm1$.
+   \item One approach that does converge on a stable and consistent form in both
+   $\mathnormal{R}$ and $\mathnormal{V}$ is to iterate this procedure,
+   \begin{itemize}
+      \item $i=0$
+      \item \textbf{while}
+       $\mbox{var}\left\{\left|\mathnormal{R}_c\right|-1\right\}<\mbox{tolerance}$
+       \textbf{or} $i < 1000$
+      \begin{itemize}
+         \item $\mathnormal{R}_c=\left(\mathnormal{I}-\mathnormal{L}^{\dagger}
+            \mathnormal{L}\right) \mathrm{binarize}\left\{ \mathnormal{R}_c \right\}$
+         \item $i=i+1$
+      \end{itemize}
+   \end{itemize}
+   \item Examples of the final $\mathnormal{R}_c$ matrix are shown in figure
+     \ref{fig:iter}.
+\end{enumerate}
+
+\begin{figure} \begin{center}
+   \includegraphics[width=12cm,angle=0]{hadamard_iterHadamardOrigin.png} 
+   \includegraphics[width=12cm,angle=0]{hadamard_iterRandomOrigin.png} 
+   \caption{ Examples of the iterative procedure for calculating
+    $\mathnormal{R}_c$ with different starting values for $\mathnormal{R}_U$.
+    The top plot is the resulting actuator command matrix, $\mathnormal{V}$,
+    bottom left is $\mathnormal{R}_c$, and the histogram shows the distribution
+    of $\mathnormal{R}_c$ (here $\pm0.5$).
+   {\it Top:} $\mathnormal{R}_U=\mathnormal{G}\mathnormal{H}_{256}$,
+   {\it Bottom:}  Starting with $\mathnormal{R}_U=\eta$, random intial entries.
+  \label{fig:iter} }
+\end{center} \end{figure} 
+
+\section{Results}
+
+There are now three alternative formations for $\mathnormal{R}$. First, the
+conventional poke matrix which was not intended to be the most accurate
+when noise is considered. Second, the approach of Kaspar {\it et~al.} 
+where $\mathnormal{V}$ is defined as a Hadamard matrix. Third, the approach
+outlined here. To use a Hadamard matrix in most situations, they are only
+easily defined for matrices with rank that is a power of 2. (Hadamard
+matrices are not known to exist for all ranks between 1 and 100.) Equation
+\ref{eqn:gen} can be modified for cases where $\mathnormal{V}$ has larger rank
+than required given the number of actuators, and so is replaced with a
+Hadamard matrix, $\mathnormal{H}$, 
+
+\begin{eqnarray}
+   \left[ G\;0 \right ]\mathnormal{H}&=&\left[\begin{array}{c}
+      \mathnormal{R} \\
+      0 \end{array} \right] \nonumber \\
+   \left[ \mathnormal{G}^{\dagger}\;0 \right ]&=&\left(
+      \left.\left[\begin{array}{c}
+      \mathnormal{R} \\
+      0 \end{array} \right]\mathnormal{H}^{T}\right/
+         \mathrm{rank}\left\{\mathnormal{H}\right\}
+      \right)^{\dagger},
+\end{eqnarray}
+
+where the orthogonality of $\mathnormal{H}$ is utilized,
+$\mathnormal{H}^{T}\mathnormal{H}=\mathrm{rank}\left\{\mathnormal{H}\right\}\mathnormal{I}$. To
+form of $\mathnormal{G}^{\dagger}$ for the other cases, equation \ref{eqn:gplus}
+can be used. The norms for $\mathnormal{R}$ for the three cases are shown in table
+\ref{table:hsnorm}. The resulting differences between the diagonal actuator
+command matrix response and the reconstruction using each form of
+$\mathnormal{G}^{\dagger}$ from equation \ref{eqn:noisygplus} are shown in
+\ref{table:snrres} for two SNR cases.
+
+The Hadamard matrix as an extended actuator control matrix had a large inherent
+inaccuracy although the response to noise was similar to the use of the maximum
+value measurement matrix. The maximum value measurement approach resulted in
+the least sensitivity to noise, with the conventional poke matrix being
+approximately $2\times$ worse except at SNR equalling 3. This latter result
+implies a lower accuracy and could be the result of using SVD in this work
+rather than a more sophisticated approach.
+
+\begin{table}
+\begin{center}\begin{tabular}{r|c|c|c} \hline
+   \textbf{model}             & \multicolumn{3}{c}{
+      $\mbox{var}\left\{\mathnormal{G}^{\dagger}\mathnormal{R}-\mathnormal{I}\right\}$}
+                                                                        \\ \hline
+            & SNR=$10^{3}$       & SNR=$10^{2}$       & SNR=10          \\ \hline
+   Poke     & $1.3\times10^{-6}$ & $1.4\times10^{-4}$ & $3.1\times10^{-3}$ \\
+   Kaspar   & $4.7\times10^{-3}$ & $4.7\times10^{-3}$ & $4.9\times10^{-3}$ \\
+   Max $\mathnormal{R}$, Hadamard 
+            & $2.5\times10^{-6}$ & $9.9\times10^{-5}$ & $1.4\times10^{-3}$ \\
+            \hline 
+\end{tabular}\end{center}
+   \caption{Error when gaussian noise is added to the measurement matrix forming
+   the control matrix.
+   \label{table:snrres}}
+\end{table}
+
+\begin{figure} \begin{center}
+   \includegraphics[width=12cm,angle=0]{hadamard_gplusMs.png} 
+   \caption{.
+  \label{fig:gplusms}}
+\end{center} \end{figure} 
+
+\begin{table}
+\begin{center}\begin{tabular}{r|c} \hline
+   \textbf{model}             & \textbf{HS norm} \\ \hline
+   Poke                       & 40 \\
+   Kaspar                     & 147 \\
+   Max $\mathnormal{R}$, random   & 293 \\
+   Max $\mathnormal{R}$, Hadamard & 293 \\
+   (Maximum norm)             & 297 \\ \hline 
+\end{tabular}\end{center}
+   \caption{The Hilbert-Schmidt norms for the 3 different approaches to
+   forming $\mathnormal{R}$, with the maximum theoretical norm.
+   \label{table:hsnorm}}
+\end{table}
+
+\end{document}
