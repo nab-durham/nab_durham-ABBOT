@@ -570,7 +570,7 @@ def doHWROnePoke(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
 
 #import time
 def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
-      smmtnsMap,sparse=False):
+      smmtnsMap,sparse=False,explicitCG=False):
    rgradV=rotateVectors(gradsV).ravel()
    smmtns=smmtnsIntegrate(smmtnsDef,rgradV,smmtnsMap)
    smmtnsV,smmtnsVOffsets=smmtnsVectorize(smmtns)
@@ -581,14 +581,40 @@ def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
    if not sparse:
       offsetEstV=numpy.dot( offsetEstM, smmtnsV )
    else:
-      from scipy.sparse.linalg import cg as spcg
-      offsetEstV=spcg( offsetEstM[0], offsetEstM[1].dot(smmtnsV),
-            tol=1e-6 )
-      if offsetEstV[1]==0:
-         offsetEstV=offsetEstV[0]
+      if not explicitCG:
+         from scipy.sparse.linalg import cg as spcg
+         offsetEstV=spcg( offsetEstM[0], offsetEstM[1].dot(smmtnsV),
+               tol=1e-6 )
+         if offsetEstV[1]==0:
+            offsetEstV=offsetEstV[0]
+         else:
+            raise ValueError("Sparse CG did not converge")
       else:
-         raise ValueError("Sparse CG did not converge")
-   
+         ### Conjugate Gradient Algorithm with initial guess
+         A=offsetEstM[0] ; AT=A.T
+         r=offsetEstM[1].dot(smmtnsV)
+         k=0
+         outputV=numpy.zeros([smmtnsDefChStrts[2]],numpy.float64)
+         p=r
+         rNorm=(r**2.0).sum() # just for comparison
+         while rNorm>1e-6 and k<1000: # 1000 for safety
+            k+=1
+            z=A.dot(p)
+            nu_k=(r**2.0).sum()/(z**2).sum()
+            outputV+=nu_k*p
+            r_prev=r
+            r=r-nu_k*AT.dot(z)
+            mu_k_1=(r**2.0).sum()/(r_prev**2.0).sum()
+            p=r+mu_k_1*p
+            rNorm_prev=rNorm
+            rNorm=(r**2.0).sum()
+            print(("INFORMATION: loop ({0:d}),"
+                  +"|r|^2={1:5.3e}/{2:5.3e}, var{{x}}={3:5.3e}").format(
+                     k,rNorm,rNorm_prev,outputV.var()) )
+
+         offsetEstV=outputV # assign
+         print( "INFORMATION: CG took {0:d} iterrations".format(k))
+
    comp=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
    updates=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
 
