@@ -304,8 +304,8 @@ def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
    #  not implementing it also eases the algorithm a bit and only removes one
    #  step.
 
-   smmtnsMatching=[]
-   overlap=0
+   overlaps=[]
+##(redundant)   overlap=0
    for i in range(len(smmtnsDef[0])): # index the summations we want to align
       for k in range(0, smmtnsDef[0][i][1], 1):
             # /\ can choose which points along a summation to try and match
@@ -325,21 +325,21 @@ def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
          # \/ for each consecutive pair of elements in one set of summations,
          #   define an intermediate point and find the matching intermediate
          #   points from the in the other set of summations.
-#                  smmtnsMatching.append( (i,j,k,l,intermediate) )
-#                  smmtnsMatching.append( (i,j,k+1,l+1,intermediate) )
-                  smmtnsMatching.append([(i,j,k,l,intermediate)
+#                  overlaps.append( (i,j,k,l,intermediate) )
+#                  overlaps.append( (i,j,k+1,l+1,intermediate) )
+                  overlaps.append([(i,j,k,l,intermediate)
                                         ,(i,j,k+1,l+1,intermediate)] )
                if smmtnsDef[0][i][0][k]==smmtnsDef[1][j][0][l]:
          # \/ for each point in one set of summations, find matching in the
          #   other
-                  smmtnsMatching.append( [(i,j,k,l,1)] )
+                  overlaps.append( [(i,j,k,l,1)] )
    # \/ nb There is an inefficiency here in so much that if i,j are already
    #  in one overlap i.e. intermediate>0, then it should be combined rather
    #  than added as a separate row.
-   return smmtnsMatching
+   return overlaps
 
 def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
-      sparse=False, boundary=None):
+      sparse=False, boundary=None, full=False):
    # If the problem is Ao+Bc=0, where o is the vector of offsets for the
    # summations, which are essentially the currently undefined start value for
    # each summation, and c is the vector of summationvalues (smmtnsV here),
@@ -373,17 +373,29 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
          # *** of the overlaps 
       #
       for j in range(len(smmtnsOvlps[i])):
+         # tcO := the summation indices for either direction that overlap
          tcO=smmtnsOvlps[i][j]
+
 #      if tcO[1]==0 and tcO[0]==0: continue
          tcCN=[ smmtnsDef[dirn][tcO[dirn]][2] for dirn in (0,1) ]
+         # tcCN := the two summation numbers which overlap
+         tcCN_two=[ tcO[0]+1, tcO[1]+1+smmtnsDef[0][-1][2] ]
+#(old)         assert tcCN==tcCN_two, "Failure:1"
+#(old)         # coI := the start offset number for either direction
          coI=[ smmtnsDefChStrts[dirn][0].index( tcCN[dirn] ) for dirn in (0,1) ]
-         if smmtnsDefChStrts[0][2][coI[0]]==smmtnsDefChStrts[1][2][coI[1]]:
+         # coN := the relevant summation offset numbers
+#(old)         coI_two=[ tcCN_two[0]-1, tcCN_two[1]-1-smmtnsDef[0][-1][2] ]
+         coI_three=[ tcO[0], tcO[1] ]
+#(old)         assert coI==coI_two, "Failure:2"
+         coN=[ smmtnsDefChStrts[dirn][2][coI_three[dirn]] for dirn in 0,1 ]
+##         assert coI_three==coI_two, "Failure:3"
+         if coN[0]==coN[1]:
             avoidedRows.append([i,len(smmtnsOvlps[i])])
 #            print("Avoiding row {0:d}".format(i))
             continue
-         if type(boundary)==type(1) and (
-		smmtnsDef[0][tcO[0]][0][tcO[2]]//boundary
-                !=smmtnsDef[1][tcO[1]][0][tcO[3]]//boundary):
+         if type(boundary)==int and (
+                  smmtnsDef[0][tcO[0]][0][tcO[2]]//boundary
+                            !=smmtnsDef[1][tcO[1]][0][tcO[3]]//boundary):
             avoidedRows.append([i,len(smmtnsOvlps[i])])
             print("Vertical boundary crossing avoided {0:d}".format(i))
             continue
@@ -395,10 +407,20 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
 #            continue
          if not sparse: # fill in here
             A[ i, smmtnsDefChStrts[0][2][coI[0]]]+=tcO[-1]
+            a=[ (0,smmtnsDefChStrts[0][2][coI[0]],1) ]
             A[ i, smmtnsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
-            #
-            B[ i, smmtnsVOffsets[smmtnsDef[0][tcO[0]][-1]-1]+tcO[2] ]+=tcO[-1]
-            B[ i, smmtnsVOffsets[smmtnsDef[1][tcO[1]][-1]-1]+tcO[3] ]+=-tcO[-1]
+            a+=[ (1,smmtnsDefChStrts[1][2][coI[1]],-1) ]
+#(old)     #
+#(old)     B[ i, smmtnsVOffsets[smmtnsDef[0][tcO[0]][-1]-1]+tcO[2] ]+=tcO[-1]
+#(old)     B[ i, smmtnsVOffsets[smmtnsDef[1][tcO[1]][-1]-1]+tcO[3] ]+=-tcO[-1]
+            b=[]
+            for k,sign in enumerate([1,-1]):
+#(new)               A[ i, tcO[k] ]+=sign*tcO[-1]
+#(new2)               A[ i, smmtnsDefChStrts[k][2][coI[k]] ]+=sign*tcO[-1]
+               b+=[ (k,smmtnsDefChStrts[k][2][coI[k]],sign) ]
+               B[ i, smmtnsVOffsets[tcCN_two[k]-1]+tcO[2+k] ]+=\
+                     sign*tcO[-1]
+            assert b==a,str((b,a))
          else:
             Aidx['data']+=[tcO[-1],-tcO[-1]]
             Aidx['col']+=[ smmtnsDefChStrts[j][2][coI[j]] for j in (0,1) ]
@@ -418,8 +440,10 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
       for i in avoidedRows[::-1]: # in reverse order
          rowIndex.pop(i[0])
       A=A[rowIndex] ; B=B[rowIndex]
-
-   return A,B
+   if full:
+      return A,B,rowIndex,avoidedRows
+   else:
+      return A,B
 
 # \/ below follow two helper functions, which make it a bit easier to just
 # do hwr, although keep in mind that they may not be right for your use.
@@ -898,7 +922,7 @@ if __name__=="__main__":
    N=[32,-1] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=4*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
-   doSparse=1
+   doSparse=0
    smmtnPeriodicBound=[None,16,8,4,N[0]+1][1]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
    gradNoiseVarScal=0.00000001 # multiplier of gradient noise
@@ -1088,7 +1112,7 @@ if __name__=="__main__":
 
    print("matrices...",end="") ; sys.stdout.flush()
    A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
-         sparse=doSparse)
+         sparse=doSparse,boundary=smmtnPeriodicBound)
    print("(done)") ; sys.stdout.flush()
 
    if not doSparse:
