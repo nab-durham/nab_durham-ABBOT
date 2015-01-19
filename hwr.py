@@ -1,17 +1,29 @@
-# What is this?
-# HWR over arbitrary apertures
+"""ABBOT.HWR, Hierarchical Wavefront Reconstruction over arbitrary apertures
+A sparse, pipelineable method for basis-free wavefront reconstruction.
+"""
 
 from __future__ import print_function
 import numpy as numpy
-import abbot.gradientOperator
+import gradientOperator
 import sys
-import pdb
+import types
+
 # from (x,y) to (+x/-y,+x/+y)
 rotateVectors=lambda grads : numpy.array(
    [ grads[:grads.shape[0]/2]*2**-0.5+grads[grads.shape[0]/2:]*2**-0.5, 
      grads[:grads.shape[0]/2]*-2**-0.5+grads[grads.shape[0]/2:]*2**-0.5 ])
 
-def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
+def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False,
+      sort=False ):
+   """Define possible summations given a gradientOperator instance.
+      maxLen [int] : Stop summations upon reaching this length, and then restart
+         another,
+      boundary [int,int] : Stop summations upon reaching a grid point spaced
+         every [x,y] and restart another, to create a regular sub-grid,
+      shortSmmtns [boolean] : If True then do not overlap ends of summations
+         when restarting in the same direction,
+      sort [boolean] : If True then sort the summations per direction.
+   """
    smmtns=[]
       # \/ define the summations
       # Let the 1st method be to zip through the subaperture index into the
@@ -58,8 +70,8 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
 #               if ((thisIdx%N[0])%boundary[0]==((N[0]-thisIdx//N[0])%boundary[0])):
                   forceTerminate=True
             if forceTerminate:
-               # check that forcing termination won't result in a grid
-               # point that cannot then be included
+###(xxx)               # check that forcing termination won't result in a grid
+###(xxx)               # point that cannot then be included
 ###(xxx)               if shortSmmtns:
 ###(xxx)                  if thisIdx in gInst.illuminatedCornersIdx and not (
 ###(xxx)                        thisIdx+N[1] in gInst.illuminatedCornersIdx and
@@ -154,8 +166,8 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
 #               if ((thisIdx%N[0])%boundary[1]==((thisIdx//N[0])%boundary[1])):
                   forceTerminate=True
             if forceTerminate:
-               # check that forcing termination won't result in a grid
-               # point that cannot then be included
+###(xxx)               # check that forcing termination won't result in a grid
+###(xxx)               # point that cannot then be included
 ###(xxx)               if shortSmmtns:
 ###(xxx)                  if thisIdx in gInst.illuminatedCornersIdx and not (
 ###(xxx)                        thisIdx+N[1] in gInst.illuminatedCornersIdx and
@@ -234,6 +246,7 @@ def smmtnsDefine( gInst, maxLen=None, boundary=None, shortSmmtns=False ):
                smmtnsStarts[1][1].append(thisIdx)
 
    smmtnsStarts[-1]=smmtnsStrtNum
+   smmtns
    return smmtnsNumber, smmtnsDef, smmtnsStarts
 
 def smmtnsMapping( smmtnsDef, gInst ):
@@ -263,6 +276,7 @@ def smmtnsMapping( smmtnsDef, gInst ):
    return smmtnsMap
 
 def smmtnsIntegrate( smmtnsDef, rgradV, smmtnsMap ):
+   """Cummulatively sum gradients to form zero start value summations"""
    smmtns=([],[])
    for j in (0,1):
       for i in range(len(smmtnsDef[j])):
@@ -270,42 +284,77 @@ def smmtnsIntegrate( smmtnsDef, rgradV, smmtnsMap ):
                [0]+list(numpy.cumsum( rgradV.take(smmtnsMap[j][i])*2**0.5 )) ))
    return smmtns
 
-def smmtnsVectorize( smmtns ):
-   # \/ produce the summation vector and indexing into it
+def smmtnsVectorize( smmtns, smmtnsDef=None ):
+   """Concatenate summations into vector s and index offsets into this vector.
+   smmtnsDef [list/None] : If not None then summation definitions are supplied,
+      and sort the summations by their start location. Otherwise, concatenate
+      in order of summation number (first all from one direction in start
+      location order, and then all from the second direction in the same
+      order). 
+   """
    smmtnsV=[]
-   smmtnsVOffsets=[]
-   for dirn in (0,1):
-      for tsmmtn in smmtns[dirn]:
-         smmtnsVOffsets.append( len(smmtnsV) )
-         smmtnsV+=tsmmtn.tolist()
-   return numpy.array(smmtnsV), numpy.array(smmtnsVOffsets)
+   smmtnsVOffsets={}
+   if type(smmtnsDef) in [tuple,list]:
+      if not len(smmtnsDef)==2 or \
+            [len(elem) for elem in smmtnsDef]!=[len(elem) for elem in smmtns]:
+         # not validated
+         raise ValueError("Summation definition not compatible with smmtnsDef")
+      smmtnsOrder=[
+            [(thisDirnDef[0][0],i,dirn) for
+                  i,thisDirnDef in enumerate(theseDirnDef) ]
+            for dirn,theseDirnDef in enumerate(smmtnsDef) ]
+      smmtnsOrder=smmtnsOrder[0]+smmtnsOrder[1]
+      smmtnsOrder.sort()
+   else:
+      # don't require the first element so can set to None
+      smmtnsOrder=[(None,i,0) for i in range(len(smmtns[0]))]\
+                 +[(None,i,1) for i in range(len(smmtns[1]))]
+   summationNumber=lambda idx,dirn: idx+1+dirn*len(smmtns[0])
+   for null,idx,dirn in smmtnsOrder:
+#(old)   for dirn in (0,1):
+#(old)      for tsmmtn in smmtns[dirn]:
+         smmtnsVOffsets[summationNumber(idx,dirn)]=\
+            (len(smmtnsV),len(smmtns[dirn][idx]))
+#(old)         smmtnsV+=tsmmtn.tolist()
+         smmtnsV+=smmtns[dirn][idx].tolist()
+   return numpy.array(smmtnsV), smmtnsVOffsets
 
-def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
-   # Solution approach is: each summation has an offset, as does the orthogonal
-   # summation at the edge where they meet. The system can be pinned down by
-   # defining the summation values plus their offsets to be equal, or
-   # equivalently, their difference to be zero. Note that some pairs of
-   # overlapping summations share offsets.  This latter fact constrains the
-   # reconstruction. 
+def smmtnsOverlaps( smmtnsDef, intermediate=1, boundary=None ):
+   """Overlaps/coincidences of summations & return matrices A & B (for o and s).
+   smmtnsDef [list] : Summations definitions,
+   intermediate [int/1] : If intermediate>0 (can be -ve, but ought not be) then
+      include sub-aperture overlaps (coincidences) as well as the overlaps
+      for the grid points.
+   """
+   # Solution approach is: each summation has an offset (start value), as does
+   # the orthogonal summation at the edge where they meet. The offsets, written
+   # as vector o, can be estimated by using summations with zero offset.
+   # Then where opposite direction summations coincide (on the grid or between
+   # grid points==sub-aperture centres), the differences between these
+   # summations will be equal to the difference of the actual offset values.
+   # Note that some pairs of overlapping summations share offsets e.g. where
+   # one ends and another begins, so are removed.
    #
-   # An alternative approach which can quash high-frequencies is to also
-   # overlap at summation intermediate points. This results in only one grid,
-   # not the usual 2 nested grids. The argument 'intermediate' adds this grid
-   # with the value being the scaling relative to the summation-offset grids.
-   # Thus very small values weight the summation-offset grids solution, whereas
-   # very large values weight the summation intermediate-grid solution.
+   # NB Carrying on the last pount, for bounded but non-short summations, there
+   # can be an overlap between summations in the same direction: the end of one
+   # will touch the other. If same-direction overlaps were implemented, it
+   # would be equivalent to continuing the summation over the boundary -> noise
+   # propagation. It is unlikely to actually affect matters if implemented as
+   # the noise is homogenous, but not implementing it makes for a smaller
+   # algorithm.
+   #
+   # To quash high-frequencies (waffle) the sub-aperture coincidences are
+   # required, which results in all values in being dependent, otherwise
+   # there are two independent groups (intermediate==0).
+   # For intermediate>0, the value is the scaling relative to the grid
+   # coincidences.
+   #
+   # Thus very small values weight the solution towards grid coincidences,
+   # whereas very large values weight the summation sub-aperture coincidences.
+   # The suggestion is intermediate=0.1
 
-   # NB There is a missing piece of information which is that for bounded
-   #  but non-short summations, there can be an overlap between summations in
-   #  the same direction: the end of one will touch the other. If this was
-   #  actually implemented, then it would be equivalent to continuing the
-   #  summation over the boundary -> noise propagation. It is unlikely to
-   #  actually affect matters if implemented as the noise is homogenous, but
-   #  not implementing it also eases the algorithm a bit and only removes one
-   #  step.
 
    overlaps=[]
-##(redundant)   overlap=0
    for i in range(len(smmtnsDef[0])): # index the summations we want to align
       for k in range(0, smmtnsDef[0][i][1], 1):
             # /\ can choose which points along a summation to try and match
@@ -315,51 +364,61 @@ def smmtnsOverlaps( smmtnsDef, intermediate=1 ):
 #(???)#            print("X",end=":")
 #(???)            continue
          for j in range(len(smmtnsDef[1])): # index the orthogonal summations 
+            if type(boundary)!=types.NoneType:
+               # check if both summations start in the same boundary
+               if ( smmtnsDef[0][i][0][0]//boundary !=
+                    smmtnsDef[1][j][0][0]//boundary ):
+                  continue
             for l in range(0, smmtnsDef[1][j][1], 1):
-#               print((smmtnsDef[0][i][0][k]//20),end=",")
-#               if not intermediate and\
+               # \/ for each consecutive pair of elements in one set of
+               # summations, define an intermediate point and find the matching
+               # intermediate points from the in the other set of summations.
                if intermediate>0 and k<(smmtnsDef[0][i][1]-1) and\
                      l<(smmtnsDef[1][j][1]-1) and\
                      (smmtnsDef[0][i][0][k]==(smmtnsDef[1][j][0][l]-1) and
                       smmtnsDef[0][i][0][k+1]==(smmtnsDef[1][j][0][l+1]+1)):
-         # \/ for each consecutive pair of elements in one set of summations,
-         #   define an intermediate point and find the matching intermediate
-         #   points from the in the other set of summations.
-#                  overlaps.append( (i,j,k,l,intermediate) )
-#                  overlaps.append( (i,j,k+1,l+1,intermediate) )
                   overlaps.append([(i,j,k,l,intermediate)
                                         ,(i,j,k+1,l+1,intermediate)] )
+               # \/ for each point in one set of summations, find matching in
+               # the other
                if smmtnsDef[0][i][0][k]==smmtnsDef[1][j][0][l]:
-         # \/ for each point in one set of summations, find matching in the
-         #   other
+                  # \/ nb if i,j are in a overlap i.e. intermediate>0, then
+                  # this line ought to combine with an existing entry rather
+                  # than be added as a separate row.
                   overlaps.append( [(i,j,k,l,1)] )
-   # \/ nb There is an inefficiency here in so much that if i,j are already
-   #  in one overlap i.e. intermediate>0, then it should be combined rather
-   #  than added as a separate row.
    return overlaps
 
-def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
-      sparse=False, boundary=None, full=False):
-   # If the problem is Ao+Bc=0, where o is the vector of offsets for the
-   # summations, which are essentially the currently undefined start value for
-   # each summation, and c is the vector of summationvalues (smmtnsV here),
-   # then A is the matrix which selects the appropriate offsets and B selects
-   # the appropriate summations differences which ought to be zero thus the
-   # equation.  -> o=A^{+}B(-c) where A^{+} is a pseudo-inverse. Or you can use
-   # the least-squares approach, o=(A^{T}A+{\alpha}I)^{-1}A^{T}B(-c) and
-   # standard matrix algebra works, as long as \alpha!=0 i.e. regularisation is
-   # applied.
+def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, 
+         smmtnsVOffsets=None, sparse=False, boundary=None,
+         full=False):
+   """Define matrices for summation overlap determination.
+   If the problem is Ao+Bc=0, where o is the vector of offsets for the
+   summations, which are essentially the currently undefined start value for
+   each summation, and c is the vector of summationvalues (smmtnsV here),
+   then A is the matrix which selects the appropriate offsets and B selects
+   the appropriate summations differences which ought to be zero thus the
+   equation.  -> o=A^{+}B(-c) where A^{+} is a pseudo-inverse. Or you can use
+   the least-squares approach, o=(A^{T}A+{\alpha}I)^{-1}A^{T}B(-c) and
+   standard matrix algebra works, as long as \alpha!=0 i.e. regularisation is
+   applied. (Because A is an over-constrained matrix.)
 
-   # Only need to consider unique offsets; some summations will start at the
-   # same point so that would overconstrain the matrix. 
-   # Also, avoid summation overlaps that correspond to crossing boundary
-   # divisions.
+   Only need to consider unique offsets; some summations will start at the
+   same point so that would overconstrain the matrix. 
+   Also, avoid summation overlaps that correspond to crossing boundary
+   divisions.
+   """
    avoidedRows=[] # record overlaps of summations with the same offset 
+   if type(boundary)==int: print("Boundary crossing avoided=BCA")
    smmtnsLen=0
-   smmtnsVOffsets=[]
+   createSVO=False
+   if type(smmtnsVOffsets)==types.NoneType:
+      smmtnsVOffsets={}
+      createSVO=True
+   smmtnCounter=0
    for dirn in (0,1):
       for tcD in smmtnsDef[dirn]:
-         smmtnsVOffsets.append(smmtnsLen)
+         smmtnCounter+=1
+         if createSVO: smmtnsVOffsets[smmtnCounter]=(smmtnsLen,None)
          smmtnsLen+=tcD[1]
    if not sparse: # define matrices first
       A=numpy.zeros([ len(smmtnsOvlps), smmtnsDefChStrts[2] ], numpy.float32)
@@ -377,27 +436,31 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
          tcO=smmtnsOvlps[i][j]
 
 #      if tcO[1]==0 and tcO[0]==0: continue
-         tcCN=[ smmtnsDef[dirn][tcO[dirn]][2] for dirn in (0,1) ]
+#(old)         tcCN=[ smmtnsDef[dirn][tcO[dirn]][2] for dirn in (0,1) ]
          # tcCN := the two summation numbers which overlap
          tcCN_two=[ tcO[0]+1, tcO[1]+1+smmtnsDef[0][-1][2] ]
 #(old)         assert tcCN==tcCN_two, "Failure:1"
 #(old)         # coI := the start offset number for either direction
-         coI=[ smmtnsDefChStrts[dirn][0].index( tcCN[dirn] ) for dirn in (0,1) ]
+         coI=[ smmtnsDefChStrts[dirn][0].index( tcCN_two[dirn] ) for dirn in (0,1) ]
          # coN := the relevant summation offset numbers
 #(old)         coI_two=[ tcCN_two[0]-1, tcCN_two[1]-1-smmtnsDef[0][-1][2] ]
-         coI_three=[ tcO[0], tcO[1] ]
+#(old)         coI_three=[ tcO[0], tcO[1] ]
 #(old)         assert coI==coI_two, "Failure:2"
-         coN=[ smmtnsDefChStrts[dirn][2][coI_three[dirn]] for dirn in 0,1 ]
-##         assert coI_three==coI_two, "Failure:3"
+#(old)         coN=[ smmtnsDefChStrts[dirn][2][coI_three[dirn]] for dirn in 0,1 ]
+         coN=[ smmtnsDefChStrts[dirn][2][tcO[dirn]] for dirn in 0,1 ]
+#(old)         assert coI_three==coI_two, "Failure:3"
          if coN[0]==coN[1]:
-            avoidedRows.append([i,len(smmtnsOvlps[i])])
+#(old)            avoidedRows.append([i,len(smmtnsOvlps[i])])
+            if i not in avoidedRows: avoidedRows.append(i)
 #            print("Avoiding row {0:d}".format(i))
             continue
          if type(boundary)==int and (
-                  smmtnsDef[0][tcO[0]][0][tcO[2]]//boundary
-                            !=smmtnsDef[1][tcO[1]][0][tcO[3]]//boundary):
-            avoidedRows.append([i,len(smmtnsOvlps[i])])
-            print("Vertical boundary crossing avoided {0:d}".format(i))
+#(wrong?)                  smmtnsDef[0][tcO[0]][0][tcO[2]]//boundary
+#(wrong?)                            !=smmtnsDef[1][tcO[1]][0][tcO[3]]//boundary):
+                  smmtnsDef[0][tcO[0]][0][0]//boundary
+                            !=smmtnsDef[1][tcO[1]][0][0]//boundary):
+            if i not in avoidedRows: avoidedRows.append(i)
+            print("( BCA{0:d} )".format(i),end="")
             continue
 #         if type(boundary)==type(1) and (
 #		smmtnsDef[0][tcO[0]][0][tcO[2]]%boundary
@@ -406,40 +469,47 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO=None,
 #            print("Horizontal boundary crossing avoided {0:d}".format(i))
 #            continue
          if not sparse: # fill in here
-            A[ i, smmtnsDefChStrts[0][2][coI[0]]]+=tcO[-1]
-            a=[ (0,smmtnsDefChStrts[0][2][coI[0]],1) ]
-            A[ i, smmtnsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
-            a+=[ (1,smmtnsDefChStrts[1][2][coI[1]],-1) ]
+#(old)            A[ i, smmtnsDefChStrts[0][2][coI[0]]]+=tcO[-1]
+#(old)            a=[ (0,smmtnsDefChStrts[0][2][coI[0]],1) ]
+#(old)            A[ i, smmtnsDefChStrts[1][2][coI[1]]]+=-tcO[-1]
+#(old)            a+=[ (1,smmtnsDefChStrts[1][2][coI[1]],-1) ]
 #(old)     #
 #(old)     B[ i, smmtnsVOffsets[smmtnsDef[0][tcO[0]][-1]-1]+tcO[2] ]+=tcO[-1]
 #(old)     B[ i, smmtnsVOffsets[smmtnsDef[1][tcO[1]][-1]-1]+tcO[3] ]+=-tcO[-1]
-            b=[]
-            for k,sign in enumerate([1,-1]):
+#(newX)            b,c=[],[]
+            for k,sign in enumerate([1.0,-1.0]):
 #(new)               A[ i, tcO[k] ]+=sign*tcO[-1]
 #(new2)               A[ i, smmtnsDefChStrts[k][2][coI[k]] ]+=sign*tcO[-1]
-               b+=[ (k,smmtnsDefChStrts[k][2][coI[k]],sign) ]
-               B[ i, smmtnsVOffsets[tcCN_two[k]-1]+tcO[2+k] ]+=\
+               A[ i, coN[k] ]+=sign*tcO[-1]
+#(new)               b+=[ (k,smmtnsDefChStrts[k][2][coI[k]],sign) ]
+#(new3)               c+=[ (k,coN[k],sign) ]
+               B[ i, smmtnsVOffsets[tcCN_two[k]][0]+tcO[2+k] ]+=\
                      sign*tcO[-1]
-            assert b==a,str((b,a))
+#(new)            assert b==a,str((b,a))
+#(new3)            assert c==a,str((c,a))
          else:
             Aidx['data']+=[tcO[-1],-tcO[-1]]
             Aidx['col']+=[ smmtnsDefChStrts[j][2][coI[j]] for j in (0,1) ]
             rowIdx+=[i-len(avoidedRows)]*2
             Bidx['data']+=[tcO[-1],-tcO[-1]]
-            Bidx['col']+=[ smmtnsVOffsets[smmtnsDef[j][tcO[j]][-1]-1]+tcO[2+j]
+            Bidx['col']+=[ smmtnsVOffsets[smmtnsDef[j][tcO[j]][-1]][0]+tcO[2+j]
                for j in (0,1) ]
 
    if sparse:
       import scipy.sparse
       A=scipy.sparse.csr_matrix( (Aidx['data'],(rowIdx,Aidx['col'])),
-            [ (len(smmtnsOvlps)-len(avoidedRows)), smmtnsDefChStrts[2] ], numpy.float32 )
+            [ (len(smmtnsOvlps)-len(avoidedRows)), smmtnsDefChStrts[2] ],
+            numpy.float32 )
       B=scipy.sparse.csr_matrix( (Bidx['data'],(rowIdx,Bidx['col'])),
             [ (len(smmtnsOvlps)-len(avoidedRows)), smmtnsLen ], numpy.float32)
    else:
-      rowIndex=range(len(smmtnsOvlps))
-      for i in avoidedRows[::-1]: # in reverse order
-         rowIndex.pop(i[0])
+      rowIndex=numpy.setdiff1d( range(len(smmtnsOvlps)), avoidedRows )
+#(old)      rowIndex=range(len(smmtnsOvlps))
+#(old)      for i in avoidedRows[::-1]: # in reverse order
+#(old)         print(len(rowIndex),i)
+#(old)         rowIndex.pop(i[0])
       A=A[rowIndex] ; B=B[rowIndex]
+   print()
    if full:
       return A,B,rowIndex,avoidedRows
    else:
@@ -454,7 +524,8 @@ def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
          smmtnsDefine( gO, maxLen=maxLen, boundary=boundary )
    smmtnsOvlps=smmtnsOverlaps(smmtnsDef,overlapType)
    smmtnsMap=smmtnsMapping(smmtnsDef,gO)
-   A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, gO, sparse)
+   A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, 
+         sparse=sparse)
 #(obs):#   geometry=numpy.zeros(gO.n_,numpy.float32)
 #(obs):#   for tcDCS in smmtnsDefChStrts[:-1]:
 #(obs):#       for x in range(len(tcDCS[1])):
@@ -464,7 +535,7 @@ def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
 #(obs):#       for x in range(len(tcDCS[1])):
 #(obs):#         mappingM[ geometry.ravel().nonzero()[0].searchsorted(tcDCS[1][x]),
 #(obs):#                  tcDCS[2][x] ]=1
-#(obs):#   lO=abbot.gradientOperator.laplacianOperatorPupil(geometry)
+#(obs):#   lO=gradientOperator.laplacianOperatorPupil(geometry)
 #(obs):#   lM=numpy.dot(lO.op,mappingM)
 #(obs):#      # /\ the map converts from offset position to physical position
 #(obs):#      #  increasing in the 1D sense, within the array.
@@ -478,7 +549,7 @@ def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
       smmntSVPosnsMask=numpy.zeros(gO.n_)
       smmntSVPosnsMask.ravel()[smmntSVPosnsA]=1
       #
-      lO=abbot.gradientOperator.laplacianOperatorType1(
+      lO=gradientOperator.laplacianOperatorType1(
             pupilMask=smmntSVPosnsMask)
       lM=lO.returnOp()
       #
@@ -786,7 +857,7 @@ def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
 if __name__=="__main__":
 
    import pdb # Python debugger
-   import abbot.continuity
+   import continuity
    import time
    import numpy.ma as ma
 
@@ -920,23 +991,27 @@ if __name__=="__main__":
 
 # \/ configuration here_______________________ 
    N=[32,-1] ; #N[1]=(N[0]*6)//39. # size
-   r0=2 ; L0=4*r0#N[0]/3.0
+   r0=2 ; L0=10*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
    doSparse=0
-   smmtnPeriodicBound=[None,16,8,4,N[0]+1][1]# optional 
+   smmtnPeriodicBound=8#[None,16,8,4,2,N[0]+1][2]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=0.00000001 # multiplier of gradient noise
+   gradNoiseVarScal=2 # multiplier of gradient noise
    smmtnOvlpType=0.10    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
    dopinv=False 
    doShortSmmtns=0#False # True means do not include summation bounday truncation overlaps
-   disableNoiseReduction=1#False
-   contLoopBoundaries=[ N[0]+1, N[0]/2, smmtnPeriodicBound ][0]
+   disableNoiseReduction=True#False
+   contLoopBoundaries=[ N[0]+1, N[0]/2, smmtnPeriodicBound ][-1]
    laplacianSmoother=1e-6
    OEregVal=1e-6 # offset est. regularization value, 1e-2 is usually good
    fractionalZeroingoeM=0 # always keep this as zero 
       # (fraction of max{offsetEstM} below which to zero)
+   sortedvector=1 # True means the summation vector is sorted by summation start position
+   oeblocked=1  # 0 use old summation update method with no block reduction
+                # 1 use new method with block reduction
+                # -1 does new method with no block reduction
 # /\ _________________________________________ 
 
 
@@ -966,6 +1041,7 @@ if __name__=="__main__":
    print(" noDirectInv={0:d}".format(noDirectInv>0)) 
    print(" dopinv={0:d}".format(dopinv>0)) 
    print(" shortSmmtns={0:d}".format(doShortSmmtns>0)) 
+   print(" oeblocked={0:d}".format(oeblocked)) 
 
    if doSparse:
       class counter(object):
@@ -993,15 +1069,15 @@ if __name__=="__main__":
 
    print("gInst...",end="") ; sys.stdout.flush()
    ts=time.time()
-   gInst=abbot.gradientOperator.gradientOperatorType1(
+   gInst=gradientOperator.gradientOperatorType1(
       pupilMask=pupAp, sparse=doSparse )
-#   sam=numpy.load("/tmp/tmp3");gInst=abbot.gradientOperator.gradientOperatorType1(sam )
+#   sam=numpy.load("/tmp/tmp3");gInst=gradientOperator.gradientOperatorType1(sam )
 #?? # \/ CANARY sub-aperture mask
 #??    print("**NB** Using CANARY sub-aperture mask")
 #??    N=[8,8]
 #??    thisAp=numpy.array([[0,0,1,1,1,0,0], [0,1,1,1,1,1,0], [1,1,1,1,1,1,1],
 #??          [1,1,1,0,1,1,1], [1,1,1,1,1,1,1], [0,1,1,1,1,1,0], [0,0,1,1,1,0,0]])
-#??    gInst=abbot.gradientOperator.gradientOperatorType1( thisAp,sparse=doSparse )
+#??    gInst=gradientOperator.gradientOperatorType1( thisAp,sparse=doSparse )
    pupAp=(gInst.illuminatedCorners>0)*1 # force as integers
    print("({0:3.1f}s)...".format(time.time()-ts),end="") ; sys.stdout.flush()
    gO=gInst.returnOp() # gradient operator matrix
@@ -1011,14 +1087,14 @@ if __name__=="__main__":
    if noiseReduction:
       ts=time.time()
       print("noise reduction: defn...",end="") ; sys.stdout.flush()
-      loopsDef=abbot.continuity.loopsDefine( gInst, contLoopBoundaries ) 
-      loopIntM=abbot.continuity.loopsIntegrationMatrix(
+      loopsDef=continuity.loopsDefine( gInst, contLoopBoundaries ) 
+      loopIntM=continuity.loopsIntegrationMatrix(
             loopsDef, gInst, doSparse) 
       print("({0:3.1f}s)...inversion...".format(time.time()-ts),end="")
       ts=time.time()
       sys.stdout.flush()
       noiseExtM,noiseReductionM=\
-            abbot.continuity.loopsNoiseMatrices( loopIntM, gInst )
+            continuity.loopsNoiseMatrices( loopIntM, gInst )
 #      # \/ sparsify
 #      if nrSparsifyFrac!=0:
 #         maxInM=abs(noiseExtM).max()
@@ -1046,13 +1122,13 @@ if __name__=="__main__":
 ###3            numpy.arange(N[0]),
 ###3            numpy.arange(N[0])#,0,-1)
 ###3         ).T.ravel().take( gInst.illuminatedCornersIdx ) # 45deg slope
-#>    import abbot.phaseCovariance
+#>    import phaseCovariance
 #>    print("phscov.",end="") ; sys.stdout.flush()
-#>    directPCOne=abbot.phaseCovariance.covarianceDirectRegular( N[0], r0, L0 )
+#>    directPCOne=phaseCovariance.covarianceDirectRegular( N[0], r0, L0 )
 #>    print(".",end="") ; sys.stdout.flush()
-#>    directPC=abbot.phaseCovariance.covarianceMatrixFillInRegular( directPCOne ) 
+#>    directPC=phaseCovariance.covarianceMatrixFillInRegular( directPCOne ) 
 #>    print(".",end="") ; sys.stdout.flush()
-#>    directcholesky=abbot.phaseCovariance.choleskyDecomp(directPC)
+#>    directcholesky=phaseCovariance.choleskyDecomp(directPC)
 #>    print(".",end="") ; sys.stdout.flush()
 #>    rdm=numpy.random.normal(size=N[0]**2) # what to reconstruct
 #>    directTestPhase=numpy.dot(directcholesky, rdm)
@@ -1101,18 +1177,22 @@ if __name__=="__main__":
    ts=time.time()
    smmtns=smmtnsIntegrate(smmtnsDef,rgradV,smmtnsMap)
    print("(done, {0:3.1f})".format(time.time()-ts)) ; sys.stdout.flush()
-   print("vectorize...",end="") ; sys.stdout.flush()
-   smmtnsV,smmtnsVOffsets=smmtnsVectorize(smmtns)
+   print("vectorize{0:s}...".format(
+         "" if not sortedvector else " (sorted)"),end="") ; sys.stdout.flush()
+   smmtnsV,smmtnsVOffsets=smmtnsVectorize(
+         smmtns, None if not sortedvector else smmtnsDef )
    print("(done)") ; sys.stdout.flush()
 
    print("overlaps...",end="") ; sys.stdout.flush()
    ts=time.time()
-   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,smmtnOvlpType)
+   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,smmtnOvlpType,
+         boundary=None if oeblocked!=1 else N[0]*smmtnPeriodicBound )
    print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
 
    print("matrices...",end="") ; sys.stdout.flush()
    A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
-         sparse=doSparse,boundary=smmtnPeriodicBound)
+         smmtnsVOffsets, sparse=doSparse,
+         boundary=None if oeblocked!=1 else N[0]*smmtnPeriodicBound)
    print("(done)") ; sys.stdout.flush()
 
    if not doSparse:
@@ -1127,7 +1207,7 @@ if __name__=="__main__":
 #      pupApStartsOnly=numpy.zeros(pupAp.shape)
 #      pupApStartsOnly.ravel()[smmtnsDefChStrts[0][1]+smmtnsDefChStrts[1][1]]=1
       print(".",end="") ; sys.stdout.flush()
-#      chOScovM=abbot.phaseCovariance.covarianceMatrixFillInMasked(
+#      chOScovM=phaseCovariance.covarianceMatrixFillInMasked(
 #         directPCOne, pupApStartsOnly )
       print(".",end="") ; sys.stdout.flush()
 #<<<>>>      pdb.set_trace() # <<<>>>
@@ -1136,7 +1216,7 @@ if __name__=="__main__":
       offsetEstM=numpy.dot( numpy.dot(
             numpy.linalg.inv(
                numpy.dot( A.T,A )+invchOScovM*OEregVal ), A.T ), -B )
-      offsetEstM=numpy.linalg.pinv(A).dot(-B)
+###      offsetEstM=numpy.linalg.pinv(A).dot(-B)
       if fractionalZeroingoeM>0:
          raise RuntimeError("DISABLED")
 ###(disabled)         maxoeM=max(abs(offsetEstM).ravel())
@@ -1178,21 +1258,141 @@ if __name__=="__main__":
    updates=numpy.zeros(2*N[0]**2, numpy.float64)
 
    print("recon...",end="") ; sys.stdout.flush()
-   # do one way...
-   for x in range(len(smmtns[0])):
-      toeI=x
-      for i in range((smmtnsDef[0][x][1])):
-         comp[ smmtnsDef[0][x][0][i] ]+=(smmtns[0][x][i]+offsetEstV[toeI])
-         updates[ smmtnsDef[0][x][0][i] ]+=1
-         pass
-   # ...then another
-   for x in range(len(smmtns[1])):
-      toeI=smmtnsDefChStrts[1][2][x]
-      for i in range((smmtnsDef[1][x][1])):
-         comp[ N[0]**2+smmtnsDef[1][x][0][i] ]+=\
-               (smmtns[1][x][i]+offsetEstV[toeI])
-         updates[ N[0]**2+smmtnsDef[1][x][0][i] ]+=1
-         pass
+   # algorithm to implement:-
+   # Do all summations belonging to the first set of sub-grids that are lie
+   # within the same vertical extent of the grid. (1st-row of sub-grids.)
+   # Then extract the summation values for the last row of grid points in this
+   # region. These grid points are also present in the first row of summations  
+   # that lie in the next set of sub-grids.
+   # If the offset estimation is block-structured then obtain all the offsets
+   # for this same row, and compute equivalent mean values. Store the
+   # difference, and use to add to all offset values in this row of sub-grids.
+   # Repeat for the remaining sub-grids.
+   if oeblocked==0:
+      # [ old algorithm begins >>>
+      print("(OLD algorithm)...",end="")
+      for dirn in (0,1):
+         for x in range(len(smmtns[dirn])):
+            toeI=x if dirn==0 else smmtnsDefChStrts[1][2][x]
+            for i in range((smmtnsDef[dirn][x][1])):
+               comp[ (N[0]**2 if dirn==1 else 0)+
+                     smmtnsDef[dirn][x][0][i] ]+=(
+                        smmtns[dirn][x][i]+offsetEstV[toeI])
+               updates[ (N[0]**2 if dirn==1 else 0)+
+                     smmtnsDef[dirn][x][0][i] ]+=1
+#(old)         # ...then another
+#(old)            toeI=smmtnsDefChStrts[1][2][x] # =x for [0] direction
+#(old)            for i in range((smmtnsDef[1][x][1])):
+#(old)               comp[ N[0]**2+smmtnsDef[1][x][0][i] ]+=\ # !N[0]**2 for [0]
+#(old)                     (smmtns[1][x][i]+offsetEstV[toeI])
+#(old)               updates[ N[0]**2+smmtnsDef[1][x][0][i] ]+=1 # !N[0]^2 4 [0]
+      # <<< old algorithm ends ]
+   else:
+      smmtnOrder={}
+      for subgridRow in range( N[0]//smmtnPeriodicBound+1 ):
+         smmtnOrder[subgridRow] = [],{},{} # instantiate
+         # smmtnOrder[subgridRow][0][:] = [(dirn,no),...]
+         #   , smmtns belonging to s-g row
+         # smmtnOrder[subgridRow+1][1][posn] = [[(dirn,no),...],...]
+         #   , smmtns ending in next sub-grid row/at sub-grid row boundary
+         # smmtnOrder[subgridRow][2][posn] = [[(dirn,no),...],...]
+         #   , smmtns starting at sub-grid row boundary
+      # run through all summations and find the sub-grid row order that they
+      # occur in,
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         for dirn in (0,1):
+            for x in range(len(smmtnsDef[dirn])):
+               smmtnEndPosns=[ smmtnsDef[dirn][x][0][posn] for posn in (0,-1) ]
+               smmtnEndRow  =[ smmtnEndPosns[posn]//N[0]//smmtnPeriodicBound
+                     for posn in (0,-1) ]
+               if smmtnEndRow[0]!=subgridRow: continue # not of interest
+               smmtnOrder[subgridRow][0].append( [dirn,x,smmtnEndPosns] )
+               if ( (smmtnEndPosns[0]//N[0])== 
+                     smmtnPeriodicBound*smmtnEndRow[0] ):
+                  # have the start of a summation aligned with the start of
+                  # the sub-grid row, so record
+                  if smmtnEndPosns[0] not in smmtnOrder[subgridRow][2]:
+                     smmtnOrder[subgridRow][2][smmtnEndPosns[0]]=[ (dirn,x) ]
+                  else:
+                     smmtnOrder[subgridRow][2][smmtnEndPosns[0]]+=[ (dirn,x) ]
+               if smmtnEndRow[1]==subgridRow:
+                  continue # ends in same sub-grid so no longer of interest
+###               elif smmtnEndRow[1]==(1+subgridRow) and\
+###                     smmtnEndPosns[1]//N[0]==smmtnPeriodicBound*smmtnEndRow[1]: 
+               elif smmtnEndRow[1]==(1+subgridRow):
+                  # ends exactly on next sub-grid so record
+                  if smmtnEndPosns[1] not in smmtnOrder[subgridRow+1][1]:
+                     smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]=[ (dirn,x) ]
+                  else:
+                     smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]+=[ (dirn,x) ]
+#(not true)               else:
+#(not true)                  # a summation can only occur in two rows of sub-grid
+#(not true)                  # NB negativity of direction is not considered in this
+#(not true)                  # statement
+#(not true)                  raise ValueError("Summation out of place")
+         # search and eliminate unknowable/excess summation starts/ends
+         # e.g. remove all entries for subgridRow==0 and subgridRow==-1 (last)
+         smmtnKeys=numpy.intersect1d( smmtnOrder[subgridRow][2].keys(),
+                            smmtnOrder[subgridRow][1].keys() )
+         for key in smmtnOrder[subgridRow][2].keys():
+            if key not in smmtnKeys: del smmtnOrder[subgridRow][2][key]
+         for key in smmtnOrder[subgridRow][1].keys():
+            if key not in smmtnKeys: del smmtnOrder[subgridRow][1][key]
+      # now run over the ordered summations and use the following algorithm:
+      # (A) Go over the summations in this sub-grid row and compute the piston
+      #   (average): this is just the start values,
+      # (B) Take the piston from the ends of the previous sub-grid row, and
+      #   compute the difference of the previous-row piston and this-row
+      #   piston: this works because they overlap and this difference is then
+      #   the offset for this sub-grid row's summations,
+      # (Ci) Update the summations using the start values and the offset,
+      # (Cii) and capture the last elements which overlap with the next
+      #   sub-grid row, and finally compute the piston,
+      # repeat
+      offsetLastRow=0
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         offsetNextRow=[0,0],[0,0] # reset
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            # [ get piston ]
+            # for (A), are we interested...?
+            if not smmtnEndPosns[0] in smmtnOrder[subgridRow][2]: continue
+            if ( not (dirn,smmtnNo) in 
+                  smmtnOrder[subgridRow][2][smmtnEndPosns[0]]):
+               raise ValueError("Expected to find summation specfn.I")
+            if smmtnEndPosns[0]//N[0]%smmtnPeriodicBound:
+               raise ValueError("Expected to find exact boundary.I")
+            # ...yes we are interested.
+            offsetEstIdx=smmtnNo if dirn==0 else smmtnsDefChStrts[1][2][smmtnNo]
+            offsetNextRow[0][1]+=1
+            offsetNextRow[0][0]+=offsetEstV[offsetEstIdx]
+         # compute (B)
+         offset=0 if offsetNextRow[0][1]==0 else\
+               (-offsetNextRow[0][0]*offsetNextRow[0][1]**-1.0)+offsetLastRow 
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            # [ update summations ]
+            offsetEstIdx=smmtnNo if dirn==0 else smmtnsDefChStrts[1][2][smmtnNo]
+            smmtns[dirn][smmtnNo]+=offsetEstV[offsetEstIdx]+offset # (Ci) 
+            # for (Cii), is this summation relevant...?
+            if not smmtnEndPosns[1] in smmtnOrder[subgridRow+1][1]: continue
+            if ( not (dirn,smmtnNo) in
+                  smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]):
+               raise ValueError("Expected to find summation specfn.II")
+###            if smmtnEndPosns[1]//N[0]%smmtnPeriodicBound:
+###               raise ValueError("Expected to find exact boundary.II")
+            # ...yes, it is. 
+            offsetNextRow[1][1]+=1
+            offsetNextRow[1][0]+=smmtns[dirn][smmtnNo][-1]
+            offsetLastRow=0 if offsetNextRow[1][1]==0 else\
+                  offsetNextRow[1][0]*offsetNextRow[1][1]**-1.0 
+
+      # finally, create the 2D version of the wavefront for each direction
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            idx=numpy.array(smmtnsDef[dirn][smmtnNo][0])
+            comp[ (N[0]**2 if dirn==1 else 0)+idx ]+=smmtns[dirn][smmtnNo]
+            updates[ (N[0]**2 if dirn==1 else 0)+idx ]+=1
+            print("<{0:d},{1:d}>".format(subgridRow,smmtnNo),end=" ")
+   
    print("(done)") ; sys.stdout.flush()
    comp.resize([2]+[N[0]]*2)
    updates.resize([2]+[N[0]]*2)
@@ -1207,7 +1407,7 @@ if __name__=="__main__":
    # <---- ends ------< *** MANUAL ***
 
    # ----> begins ----> *** HELPER FN. ***
-   smmtnsDef, smmtnsDefChStrts, smmtnsMap, offsetEstM=prepHWR(
+   smmtnsDef, smmtnsDefChStrts, smmtnsMap, helperoffsetEstM=prepHWR(
          gInst, smmtnMaxLength,
          [smmtnPeriodicBound]*2,
          smmtnOvlpType, doSparse, reglnVal=OEregVal)
@@ -1216,7 +1416,7 @@ if __name__=="__main__":
          gradV,
          smmtnsDef,
          gInst,
-         offsetEstM,
+         helperoffsetEstM,
          smmtnsDefChStrts,
          smmtnsMap,
          doWaffleReduction=0,
@@ -1235,7 +1435,7 @@ if __name__=="__main__":
    # >---- begins ----> *** DIRECT INV. ***
       # try mmse inversion
       print("mmse start...",end="") ; sys.stdout.flush()
-      lO=abbot.gradientOperator.laplacianOperatorType1(
+      lO=gradientOperator.laplacianOperatorType1(
             pupilMask=pupAp*1,sparse=doSparse )
       lM=lO.returnOp()
       print("(done)") ; sys.stdout.flush()
@@ -1289,7 +1489,7 @@ if __name__=="__main__":
    # plot statistics of number of summations in the grid points 
    summationLocs=[]
    for smmtnDirs in smmtnsDef:
-      for smmtns in smmtnDirs: summationLocs+=smmtns[0]
+      for smmtnsPositions in smmtnDirs: summationLocs+=smmtnsPositions[0]
 
    template=numpy.zeros(gInst.n_,'i').ravel()
    for smmtnIdx in summationLocs: template[smmtnIdx]+=1
@@ -1298,3 +1498,59 @@ if __name__=="__main__":
    print("Summations per grid point:")
    print(" max={0:d} (expect={1:d})".format(max(template),(not doShortSmmtns)*2+2))
    print(" min={0:d} (expect=1)".format(min(template)))
+
+   def doPlotATAsparsity(): 
+      from matplotlib import pyplot as pyp
+      # z is list of pairs of (start value position,start value number)
+      z=[[[x,y[2][i]] for i,x in enumerate(y[1])]for y in smmtnsDefChStrts[:2]]
+      z=z[0]+z[1] 
+      z.sort() # sort by summation start value position
+      zi=[x[1] for x in z] # zi is the start value number sorted by position
+      # create a unique set of zi's that doesn't destroy the order
+      ziu=[] 
+      for v in zi:
+         if not v in ziu: ziu.append(v) 
+      # build the key matrices, and then plot them
+      ATA=A.T.dot(A) ; ATAs=A.T[ziu].dot(A[:,ziu])
+      pyp.gray()
+      pyp.subplot(4,2,1)
+      print("[.",end="") ; sys.stdout.flush()
+      pyp.imshow( ATA!=0,vmin=-0.1,vmax=0.1) ; pyp.title("ATA")
+      pyp.subplot(4,2,2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( ATAs!=0,vmin=-0.1,vmax=0.1) ; pyp.title("ATA_s")
+      pyp.subplot(4,2,1+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( numpy.linalg.inv(ATA+invchOScovM*1e-2)!=0,
+            vmin=-0.1,vmax=0.1)
+      pyp.title("ATA_I")
+      pyp.subplot(4,2,2+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( numpy.linalg.inv(ATAs+invchOScovM*1e-2)!=0,
+            vmin=-0.1,vmax=0.1) 
+      pyp.title("ATA_sI")
+      pyp.subplot(4,2,1+2+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( numpy.linalg.inv(ATA+invchOScovM*1e-2).dot(A.T)!=0,
+            vmin=-0.1,vmax=0.1)
+      pyp.title("ATA_I")
+      pyp.subplot(4,2,2+2+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( numpy.linalg.inv(ATAs+invchOScovM*1e-2).dot(A.T[ziu])!=0,
+            vmin=-0.1,vmax=0.1) 
+      pyp.title("ATA_sI")
+      pyp.subplot(4,2,1+2+2+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow( numpy.linalg.inv(ATA+invchOScovM*1e-2).dot(A.T).dot(B)!=0,
+            vmin=-0.1,vmax=0.1)
+      pyp.title("ATA_I")
+      pyp.subplot(4,2,2+2+2+2)
+      print(".",end="") ; sys.stdout.flush()
+      pyp.imshow(
+            numpy.linalg.inv(ATAs+invchOScovM*1e-2).dot(A.T[ziu]).dot(B)!=0,
+            vmin=-0.1,vmax=0.1)
+      pyp.title("ATA_sI")
+      print("]",end="") ; sys.stdout.flush()
+      
+
+
