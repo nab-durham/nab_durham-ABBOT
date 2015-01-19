@@ -12,7 +12,7 @@
 # TODO: Make a class, inherited from gradientOperatorType1
 
 from __future__ import print_function
-import abbot.gradientOperator as abbotGO
+import gradientOperator
 import numpy as np
 
 def loopsDefine( gO, partitionPeriod=None, partitionPeriodOffset=[0,0],
@@ -204,11 +204,11 @@ if __name__=="__main__":
          (numpy.arange(nfft-1)-(nfft-2)/2.)**2.0 )
    subapMask=(subapCds<=(nfft/2-0.5)**2)*(subapCds>(((nfft*6)//39.0)/2-0.5)**2)
 #>   pupilMask*=0 ; pupilMask+=1 # square
-   gO=abbotGO.gradientOperatorType1( subapMask, sparse=True )
+   gO=gradientOperator.gradientOperatorType1( subapMask, sparse=True )
    print(
       "Number subaps/corners={0.numberSubaps:d}/{0.numberPhases:d}".format(gO))
 
-#?   gO=abbotGO.gradientOperatorType1( pupilMask=(corners) )
+#?   gO=XXX.gradientOperatorType1( pupilMask=(corners) )
    corners=gO.illuminatedCorners!=0
 
    partitionPeriod=None
