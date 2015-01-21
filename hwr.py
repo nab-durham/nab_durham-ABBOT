@@ -519,13 +519,28 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
 # do hwr, although keep in mind that they may not be right for your use.
 
 def prepHWR(gO,maxLen=None,boundary=None,overlapType=1,sparse=False,
-      matrices=False,reglnVal=1e-2,laplacianRegln=0):
+      matrices=False, reglnVal=1e-2, laplacianRegln=0, oeblocked=False):
+   """Prepare HWR aspects, call at start
+   gO [gradientOperatorType1] : defines sub-apertures
+   maxLen [int] : length at which to restart a summation
+   boundary [int,int] : If None than ignore else boundary at which to restart a
+      summation, defines the sub-grids
+   overlap [0<int<=1] : whether to have sub-aperture coincidences, or just
+         grid coincidences (=0)
+   sparse [bool] : use sparse calculations
+   matrices [bool] : ???
+   reglnVal [float] : (default=0.01) ???
+   laplacianRegln [float] : (default=0) ???
+   oeblocked [bool] : if True and boundary!=None then do pipelined calculations
+   """
+
    smmtnsNumber,smmtnsDef,smmtnsDefChStrts=\
          smmtnsDefine( gO, maxLen=maxLen, boundary=boundary )
-   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,overlapType)
+   smmtnsOvlps=smmtnsOverlaps(smmtnsDef,overlapType,
+         boundary=gO.n_[0]*boundary[0] if oeblocked else None)
    smmtnsMap=smmtnsMapping(smmtnsDef,gO)
    A,B=smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts, 
-         sparse=sparse)
+         sparse=sparse, boundary=gO.n_[0]*boundary[0] if oeblocked else None)
 #(obs):#   geometry=numpy.zeros(gO.n_,numpy.float32)
 #(obs):#   for tcDCS in smmtnsDefChStrts[:-1]:
 #(obs):#       for x in range(len(tcDCS[1])):
@@ -665,7 +680,7 @@ def doHWROnePoke(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
 
 #import time
 def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
-      smmtnsMap,sparse=False,explicitCG=False):
+      smmtnsMap,sparse=False,explicitCG=False,smmtnPeriodicBound=None):
    rgradV=rotateVectors(gradsV).ravel()
    smmtns=smmtnsIntegrate(smmtnsDef,rgradV,smmtnsMap)
    smmtnsV,smmtnsVOffsets=smmtnsVectorize(smmtns)
@@ -709,23 +724,127 @@ def doHWRIntegration(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,
 
          offsetEstV=outputV # assign
          print( "INFORMATION: CG took {0:d} iterrations".format(k))
-
+   
    comp=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
    updates=numpy.zeros([2*gO.n_[0]*gO.n_[1]], numpy.float64)
+   if smmtnPeriodicBound==int:
+      smmtnOrder={}
+      for subgridRow in range( N[0]//smmtnPeriodicBound+1 ):
+         smmtnOrder[subgridRow] = [],{},{} # instantiate
+         # smmtnOrder[subgridRow][0][:] = [(dirn,no),...]
+         #   , smmtns belonging to s-g row
+         # smmtnOrder[subgridRow+1][1][posn] = [[(dirn,no),...],...]
+         #   , smmtns ending in next sub-grid row/at sub-grid row boundary
+         # smmtnOrder[subgridRow][2][posn] = [[(dirn,no),...],...]
+         #   , smmtns starting at sub-grid row boundary
+      # run through all summations and find the sub-grid row order that they
+      # occur in,
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         for dirn in (0,1):
+            for x in range(len(smmtnsDef[dirn])):
+               smmtnEndPosns=[ smmtnsDef[dirn][x][0][posn] for posn in (0,-1) ]
+               smmtnEndRow  =[ smmtnEndPosns[posn]//N[0]//smmtnPeriodicBound
+                     for posn in (0,-1) ]
+               if smmtnEndRow[0]!=subgridRow: continue # not of interest
+               smmtnOrder[subgridRow][0].append( [dirn,x,smmtnEndPosns] )
+               if ( (smmtnEndPosns[0]//N[0])== 
+                     smmtnPeriodicBound*smmtnEndRow[0] ):
+                  # have the start of a summation aligned with the start of
+                  # the sub-grid row, so record
+                  if smmtnEndPosns[0] not in smmtnOrder[subgridRow][2]:
+                     smmtnOrder[subgridRow][2][smmtnEndPosns[0]]=[ (dirn,x) ]
+                  else:
+                     smmtnOrder[subgridRow][2][smmtnEndPosns[0]]+=[ (dirn,x) ]
+               if smmtnEndRow[1]==subgridRow:
+                  continue # ends in same sub-grid so no longer of interest
+               elif smmtnEndRow[1]==(1+subgridRow):
+                  # ends exactly on next sub-grid so record
+                  if smmtnEndPosns[1] not in smmtnOrder[subgridRow+1][1]:
+                     smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]=[ (dirn,x) ]
+                  else:
+                     smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]+=[ (dirn,x) ]
+         # search and eliminate unknowable/excess summation starts/ends
+         # e.g. remove all entries for subgridRow==0 and subgridRow==-1 (last)
+         smmtnKeys=numpy.intersect1d( smmtnOrder[subgridRow][2].keys(),
+                            smmtnOrder[subgridRow][1].keys() )
+         for key in smmtnOrder[subgridRow][2].keys():
+            if key not in smmtnKeys: del smmtnOrder[subgridRow][2][key]
+         for key in smmtnOrder[subgridRow][1].keys():
+            if key not in smmtnKeys: del smmtnOrder[subgridRow][1][key]
+      # now run over the ordered summations and use the following algorithm:
+      # (A) Go over the summations in this sub-grid row and compute the piston
+      #   (average): this is just the start values,
+      # (B) Take the piston from the ends of the previous sub-grid row, and
+      #   compute the difference of the previous-row piston and this-row
+      #   piston: this works because they overlap and this difference is then
+      #   the offset for this sub-grid row's summations,
+      # (Ci) Update the summations using the start values and the offset,
+      # (Cii) and capture the last elements which overlap with the next
+      #   sub-grid row, and finally compute the piston,
+      # repeat
+      offsetLastRow=0
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         offsetNextRow=[0,0],[0,0] # reset
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            # [ get piston ]
+            # for (A), are we interested...?
+            if not smmtnEndPosns[0] in smmtnOrder[subgridRow][2]: continue
+            if ( not (dirn,smmtnNo) in 
+                  smmtnOrder[subgridRow][2][smmtnEndPosns[0]]):
+               raise ValueError("Expected to find summation specfn.I")
+            if smmtnEndPosns[0]//N[0]%smmtnPeriodicBound:
+               raise ValueError("Expected to find exact boundary.I")
+            # ...yes we are interested.
+            offsetEstIdx=smmtnNo if dirn==0 else smmtnsDefChStrts[1][2][smmtnNo]
+            offsetNextRow[0][1]+=1
+            offsetNextRow[0][0]+=offsetEstV[offsetEstIdx]
+         # compute (B)
+         offset=0 if offsetNextRow[0][1]==0 else\
+               (-offsetNextRow[0][0]*offsetNextRow[0][1]**-1.0)+offsetLastRow 
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            # [ update summations ]
+            offsetEstIdx=smmtnNo if dirn==0 else smmtnsDefChStrts[1][2][smmtnNo]
+            smmtns[dirn][smmtnNo]+=offsetEstV[offsetEstIdx]+offset # (Ci) 
+            # for (Cii), is this summation relevant...?
+            if not smmtnEndPosns[1] in smmtnOrder[subgridRow+1][1]: continue
+            if ( not (dirn,smmtnNo) in
+                  smmtnOrder[subgridRow+1][1][smmtnEndPosns[1]]):
+               raise ValueError("Expected to find summation specfn.II")
+###            if smmtnEndPosns[1]//N[0]%smmtnPeriodicBound:
+###               raise ValueError("Expected to find exact boundary.II")
+            # ...yes, it is. 
+            offsetNextRow[1][1]+=1
+            offsetNextRow[1][0]+=smmtns[dirn][smmtnNo][-1]
+            offsetLastRow=0 if offsetNextRow[1][1]==0 else\
+                  offsetNextRow[1][0]*offsetNextRow[1][1]**-1.0 
 
-   # do one way...
-   for x in range(len(smmtns[0])):
-      toeI=x
-      for i in range((smmtnsDef[0][x][1])):
-         comp[ smmtnsDef[0][x][0][i] ]+=(smmtns[0][x][i]+offsetEstV[toeI])
-         updates[ smmtnsDef[0][x][0][i] ]+=1
-   # ...then another
-   for x in range(len(smmtns[1])):
-      toeI=smmtnsDefChStrts[1][2][x]
-      for i in range((smmtnsDef[1][x][1])):
-         comp[ comp.shape[0]/2+smmtnsDef[1][x][0][i] ]+=\
-               (smmtns[1][x][i]+offsetEstV[toeI])
-         updates[ updates.shape[0]/2+smmtnsDef[1][x][0][i] ]+=1
+      # finally, create the 2D version of the wavefront for each direction
+      for subgridRow in range( N[0]//smmtnPeriodicBound ):
+         for dirn,smmtnNo,smmtnEndPosns in smmtnOrder[subgridRow][0]:
+            idx=numpy.array(smmtnsDef[dirn][smmtnNo][0])
+            comp[ (N[0]**2 if dirn==1 else 0)+idx ]+=smmtns[dirn][smmtnNo]
+            updates[ (N[0]**2 if dirn==1 else 0)+idx ]+=1
+   else:
+      for dirn in (0,1):
+         for x in range(len(smmtns[dirn])):
+            offsetEstIdx=x if dirn==0 else smmtnsDefChStrts[1][2][x]
+            idx=numpy.array( smmtnsDef[dirn][x][0] )
+            comp[ (N[0]**2 if dirn==1 else 0)+idx ]+=(
+                     smmtns[dirn][x]+offsetEstV[offsetEstIdx])
+            updates[ (N[0]**2 if dirn==1 else 0)+idx ]+=1
+#(old)      # do one way...
+#(old)      for x in range(len(smmtns[0])):
+#(old)         toeI=x
+#(old)         for i in range((smmtnsDef[0][x][1])):
+#(old)            comp[ smmtnsDef[0][x][0][i] ]+=(smmtns[0][x][i]+offsetEstV[toeI])
+#(old)            updates[ smmtnsDef[0][x][0][i] ]+=1
+#(old)      # ...then another
+#(old)      for x in range(len(smmtns[1])):
+#(old)         toeI=smmtnsDefChStrts[1][2][x]
+#(old)         for i in range((smmtnsDef[1][x][1])):
+#(old)            comp[ comp.shape[0]/2+smmtnsDef[1][x][0][i] ]+=\
+#(old)                  (smmtns[1][x][i]+offsetEstV[toeI])
+#(old)            updates[ updates.shape[0]/2+smmtnsDef[1][x][0][i] ]+=1
    return ( comp.reshape([2]+list(gO.n_)),
             updates.reshape([2]+list(gO.n_)) 
           ),(smmtnsV,smmtnsVOffsets)
@@ -821,7 +940,8 @@ def gradientsManagement(gradsV,gO,f=3,verbose=False):
    return gradsV                                                       # **
 
 def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
-      doWaffleReduction=0,doPistonReduction=1,doGradientMgmnt=0,sparse=False):
+      doWaffleReduction=0,doPistonReduction=1,doGradientMgmnt=0,sparse=False,
+      oeblocked=None):
    '''gradsV: the input gradients as a vector, first one-direction and then
          the remainder,
       smmtnsDef: definitions of summations,
@@ -833,11 +953,12 @@ def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
       doPistonReduction: apply subsequent piston reduction,
       doGradientMgmnt: apply gradient management to eliminate atypical values,
       sparse: use sparse matrices, best for problems > 1000 gradients.
+      oeblocked : if !=None then the boundary for which the pipelining occurs
    '''
    if doGradientMgmnt: gradsV=gradientsManagement(gradsV,gO)
    (comp,numbers),(smmtnsV,smmtnsVOffsets)=\
          doHWRIntegration( gradsV, smmtnsDef, gO, offsetEstM, smmtnsDefChStrts,
-               smmtnsMap, sparse )
+               smmtnsMap, sparse, False, oeblocked )
    
    comp/=numpy.where( numbers<1,1,numbers ) # average over multiple adds
    numbers=numpy.where( numbers>0,1,0 )
@@ -990,13 +1111,13 @@ if __name__=="__main__":
       pyp.waitforbuttonpress()
 
 # \/ configuration here_______________________ 
-   N=[32,-1] ; #N[1]=(N[0]*6)//39. # size
+   N=[16,-1] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=10*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
    doSparse=0
    smmtnPeriodicBound=8#[None,16,8,4,2,N[0]+1][2]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=2 # multiplier of gradient noise
+   gradNoiseVarScal=0 # multiplier of gradient noise
    smmtnOvlpType=0.10    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
@@ -1008,7 +1129,7 @@ if __name__=="__main__":
    OEregVal=1e-6 # offset est. regularization value, 1e-2 is usually good
    fractionalZeroingoeM=0 # always keep this as zero 
       # (fraction of max{offsetEstM} below which to zero)
-   sortedvector=1 # True means the summation vector is sorted by summation start position
+   sortedvector=2 # True means the summation vector is sorted by summation start position
    oeblocked=1  # 0 use old summation update method with no block reduction
                 # 1 use new method with block reduction
                 # -1 does new method with no block reduction
@@ -1408,9 +1529,13 @@ if __name__=="__main__":
 
    # ----> begins ----> *** HELPER FN. ***
    smmtnsDef, smmtnsDefChStrts, smmtnsMap, helperoffsetEstM=prepHWR(
-         gInst, smmtnMaxLength,
+         gInst,
+         smmtnMaxLength,
          [smmtnPeriodicBound]*2,
-         smmtnOvlpType, doSparse, reglnVal=OEregVal)
+         smmtnOvlpType,
+         doSparse,
+         reglnVal=OEregVal,
+         oeblocked=False if not oeblocked else True)
    
    compHWR, hwrV, smmtnsVs=doHWRGeneral(
          gradV,
@@ -1422,7 +1547,8 @@ if __name__=="__main__":
          doWaffleReduction=0,
          doPistonReduction=1,
          doGradientMgmnt=0,
-         sparse=doSparse)
+         sparse=doSparse,
+         oeblocked=None if not oeblocked else smmtnPeriodicBound )
 
    hwrViz=ma.masked_array(numpy.zeros(comp[0].shape),pupAp==0)
    hwrViz.ravel()[gInst.illuminatedCornersIdx]=hwrV
