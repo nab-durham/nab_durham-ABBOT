@@ -1,17 +1,17 @@
+"""ABBOT : Define a projection matrix and geometry for AO
+
+Includes variable guidestar height (LGS) and non-one pixel scales
+"""
+#TODO::
+#(1) Generalize members of class projection, for centre projected and
+#  other azimuth-angle dependent projections.
+
 from __future__ import print_function
-# What is this?
-# Define a projection matrix and geometry for AO
-# Includes variable guidestar height (LGS) and non-one pixel scales
-#
-# TODO::
-# (1) Generalize members of class projection, for centre projected and
-#   other azimuth-angle dependent projections.
-
-
-import version
-import numpy, collections
 from rounding import head,floor
+import collections
 import gradientOperator
+import numpy
+import version
 
 def quadrantFractions( (v,h),s, stopOnFailure=True ):
    '''For given central vertical & horizontal coordinate and the scale,
@@ -242,8 +242,8 @@ class geometry(object):
       '''Create the masks for each layer by imposing the projected pupil
       masks for the given azimuth. Only once.
       '''
+      # because this function can be slow, check if it can be avoided
       if self.layerMasksFilledIn: return True 
-      self.layerMasksFilledIn=True # presume okay
       for nl in range(self.nLayers):
          for na in range(self.nAzi+1):
             indices,fractions=self.maskLayerIdx(nl,na,flat=1)
@@ -262,6 +262,7 @@ class geometry(object):
             for i in valid:
                self.layerMasks[nl][na].ravel()[indices[i]]+=fractions[i]
        
+      self.layerMasksFilledIn=True # all is okay
       return self.layerMasksFilledIn
 
    def layerIdxOffsets(self):

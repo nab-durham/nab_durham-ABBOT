@@ -1,4 +1,4 @@
-"""General non-complete modal basis for arbitrary shaped apertures.
+"""ABBOT : General non-complete modal basis for arbitrary shaped apertures.
 
 For modal filtering, create modal functions which are limited (so non-complete) 
 which are not guaranteed to be either orthogonal or normalized.
