@@ -1,4 +1,4 @@
-"""Loop integrals to remove noise from slopes.
+"""ABBOT : Compute loop integrals for noise determination/removal
 
 Use the fact that Gamma.(s+n1+n2), where Gamma is a loop integral operator,
 s is the vector of slopes (this is Fried), and n is the noise on s,
@@ -9,9 +9,10 @@ For a NxN grid of points there are 2xNx(N-1) slopes but only (N-1)x(N-1)
 loops. Thus always underdetermined which is why only n2 can be estimated.
 Coded for the Fried geometry.
 """
+
 from __future__ import print_function
-import collections
 import gradientOperator
+import collections
 import numpy as np
 import types
 
