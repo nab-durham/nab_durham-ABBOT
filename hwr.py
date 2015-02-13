@@ -1,4 +1,5 @@
 """ABBOT.HWR, Hierarchical Wavefront Reconstruction over arbitrary apertures
+
 A sparse, pipelineable method for basis-free wavefront reconstruction.
 """
 
@@ -978,7 +979,6 @@ def doHWRGeneral(gradsV,smmtnsDef,gO,offsetEstM,smmtnsDefChStrts,smmtnsMap,
 if __name__=="__main__":
 
    import pdb # Python debugger
-   import continuity
    import time
    import numpy.ma as ma
 
@@ -1111,29 +1111,30 @@ if __name__=="__main__":
       pyp.waitforbuttonpress()
 
 # \/ configuration here_______________________ 
-   N=[16,-1] ; #N[1]=(N[0]*6)//39. # size
+   N=[32,-1] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=10*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
-   doSparse=0
+   doSparse=1
    smmtnPeriodicBound=8#[None,16,8,4,2,N[0]+1][2]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=0 # multiplier of gradient noise
+   gradNoiseVarScal=1.0 # multiplier of gradient noise
    smmtnOvlpType=0.10    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
    dopinv=False 
-   doShortSmmtns=0#False # True means do not include summation bounday truncation overlaps
-   disableNoiseReduction=True#False
+   doShortSmmtns=0 # True = don't include summation boundary truncation overlaps
+   disableNoiseReduction=0
    contLoopBoundaries=[ N[0]+1, N[0]/2, smmtnPeriodicBound ][-1]
    laplacianSmoother=1e-6
    OEregVal=1e-6 # offset est. regularization value, 1e-2 is usually good
-   fractionalZeroingoeM=0 # always keep this as zero 
-      # (fraction of max{offsetEstM} below which to zero)
-   sortedvector=2 # True means the summation vector is sorted by summation start position
+   sortedvector=2 # True means the summation vector is sorted by summation
+                  #start position
    oeblocked=1  # 0 use old summation update method with no block reduction
                 # 1 use new method with block reduction
                 # -1 does new method with no block reduction
 # /\ _________________________________________ 
+   fractionalZeroingoeM=0 # always keep this as zero 
+      # (fraction of max{offsetEstM} below which to zero)
 
 
    print("config:")
@@ -1142,7 +1143,6 @@ if __name__=="__main__":
       noiseReduction=True
       if "contLoopBoundaries" not in dir():
          contLoopBoundaries=N[0]+1 # a default value
-#      nrSparsifyFrac=0#.25 # fraction to eliminate
    else:
       noiseReduction=False
       if "contLoopBoundaries" not in dir():
@@ -1192,7 +1192,6 @@ if __name__=="__main__":
    ts=time.time()
    gInst=gradientOperator.gradientOperatorType1(
       pupilMask=pupAp, sparse=doSparse )
-#   sam=numpy.load("/tmp/tmp3");gInst=gradientOperator.gradientOperatorType1(sam )
 #?? # \/ CANARY sub-aperture mask
 #??    print("**NB** Using CANARY sub-aperture mask")
 #??    N=[8,8]
@@ -1206,26 +1205,18 @@ if __name__=="__main__":
    print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
 
    if noiseReduction:
+      import continuity
       ts=time.time()
       print("noise reduction: defn...",end="") ; sys.stdout.flush()
-      loopsDef=continuity.loopsDefine( gInst, contLoopBoundaries ) 
-      loopIntM=continuity.loopsIntegrationMatrix(
-            loopsDef, gInst, doSparse) 
-      print("({0:3.1f}s)...inversion...".format(time.time()-ts),end="")
-      ts=time.time()
-      sys.stdout.flush()
-      noiseExtM,noiseReductionM=\
-            continuity.loopsNoiseMatrices( loopIntM, gInst )
-#      # \/ sparsify
-#      if nrSparsifyFrac!=0:
-#         maxInM=abs(noiseExtM).max()
-#         noiseReductionM=numpy.identity(gInst.numberSubaps*2)-\
-#               numpy.where( abs(noiseExtM)>(maxInM*nrSparsifyFrac), noiseExtM, 0 )
-#         print("sparsified",end="") 
-#      else:
-#         print("(non-sparse)",end="")
-
+      loopsNoiseReduction=continuity.loopsNoiseMatrices(
+            pupilMask=pupAp, partitionPeriod=[contLoopBoundaries]*2,
+            sparse=doSparse )
+      print("...",end="") ; sys.stdout.flush()
+      noiseExtM,noiseReductionM=loopsNoiseReduction.returnOp()
       print("({0:3.1f}s, done)".format(time.time()-ts),end="")
+      print("(fraction=0:{0:3.1f}s)".format(
+            noiseReductionM.nonzero()[0].shape[0]*
+            noiseReductionM.shape[0]**-2.0 ))
       sys.stdout.flush()
    
    print("N,N_={0:d},{1:d}".format(gInst.n[0],gInst.n_[0]))
@@ -1331,7 +1322,6 @@ if __name__=="__main__":
 #      chOScovM=phaseCovariance.covarianceMatrixFillInMasked(
 #         directPCOne, pupApStartsOnly )
       print(".",end="") ; sys.stdout.flush()
-#<<<>>>      pdb.set_trace() # <<<>>>
 #      invchOScovM=numpy.linalg.pinv(chOScovM)
       invchOScovM=numpy.identity(A.shape[1])
       offsetEstM=numpy.dot( numpy.dot(
@@ -1340,11 +1330,11 @@ if __name__=="__main__":
 ###      offsetEstM=numpy.linalg.pinv(A).dot(-B)
       if fractionalZeroingoeM>0:
          raise RuntimeError("DISABLED")
-###(disabled)         maxoeM=max(abs(offsetEstM).ravel())
-###(disabled)         offsetEstM*=abs(offsetEstM)>=(maxoeM*fractionalZeroingoeM)
-###(disabled)         print("oeM modification, fraction filled={0:5.3f}".format(
-###(disabled)           (offsetEstM!=0).sum()*(offsetEstM.shape[0]*offsetEstM.shape[1])**-1.)
-###(disabled)            ,end="")
+         maxoeM=max(abs(offsetEstM).ravel())
+         offsetEstM*=abs(offsetEstM)>=(maxoeM*fractionalZeroingoeM)
+         print("oeM modification, fraction filled={0:5.3f}".format(
+           (offsetEstM!=0).sum()*(offsetEstM.shape[0]*offsetEstM.shape[1])**-1.)
+            ,end="")
       print(".",end="") ; sys.stdout.flush()
    else:
       import scipy.sparse
@@ -1409,6 +1399,7 @@ if __name__=="__main__":
 #(old)               updates[ N[0]**2+smmtnsDef[1][x][0][i] ]+=1 # !N[0]^2 4 [0]
       # <<< old algorithm ends ]
    else:
+      # [ new, pipeline-compatible algorithm begins >>>
       smmtnOrder={}
       for subgridRow in range( N[0]//smmtnPeriodicBound+1 ):
          smmtnOrder[subgridRow] = [],{},{} # instantiate
@@ -1513,6 +1504,7 @@ if __name__=="__main__":
             comp[ (N[0]**2 if dirn==1 else 0)+idx ]+=smmtns[dirn][smmtnNo]
             updates[ (N[0]**2 if dirn==1 else 0)+idx ]+=1
             print("<{0:d},{1:d}>".format(subgridRow,smmtnNo),end=" ")
+      # <<< new, pipeline-compatible algorithm ends ]
    
    print("(done)") ; sys.stdout.flush()
    comp.resize([2]+[N[0]]*2)
@@ -1602,6 +1594,7 @@ if __name__=="__main__":
    print("rdm.var={0:5.3f}".format(rdmViz.var()))
    print("comp.var={0:5.3f}".format(compBothViz.var()))
    print("hwr.var={0:5.3f}".format(hwrViz.var()))
+   print("mmse.var={0:5.3f}".format(invViz.var()))
    print("(rdm-comp).var={0:7.5f}".format((rdmViz-compBothViz).var()))
    print("(rdm-hwr).var={0:7.5f}".format((rdmViz-hwrViz).var()))
    if 'invViz' in dir():

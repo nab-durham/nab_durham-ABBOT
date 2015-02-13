@@ -1,5 +1,7 @@
-# What is this?
-# diagonal cure over arbritrary apertures
+""" DEPRECATED
+
+diagonal cure over arbritrary apertures
+"""
 
 from __future__ import print_function
 import numpy as numpy
@@ -519,12 +521,11 @@ if __name__=="__main__":
 
    import pdb # Python debugger
    import abbot.phaseCovariance
-   import gradNoise_Fried
    import time
    import matplotlib.pyplot as pylab, numpy.ma as ma
 
 # \/ configuration here_______________________ 
-   N=[100,0] ; N[1]=(N[0]*6)//39. # size
+   N=[10,0] ; N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=4*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
    doSparse=1
@@ -599,6 +600,7 @@ if __name__=="__main__":
    print("({0:3.1f}s, done)".format(time.time()-ts)) ; sys.stdout.flush()
 
    if noiseReduction:
+      import gradNoise_Fried
       ts=time.time()
       print("noise reduction: defn...",end="") ; sys.stdout.flush()
       loopsDef=gradNoise_Fried.loopsDefine( gInst, contLoopBoundaries ) 

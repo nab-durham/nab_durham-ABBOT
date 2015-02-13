@@ -19,9 +19,10 @@ import types
 class loops( gradientOperator.geometryType1 ):
    gridAN=lambda self,an : [(an%self.n_[1]), (an//self.n_[1])]
    AN=lambda self,gan : gan[0]+gan[1]*self.n_[1]
-   partitionReached=lambda pos,period: (
-         ((pos[0])%period)==self.partitionPeriodOffset[0]
-      or ((pos[1])%period)==self.partitionPeriodOffset[1] ) # vert/horiz
+   partitionReached=lambda self,pos: (
+         ((pos[0])%self.partitionPeriod[0])==self.partitionPeriodOffset[0]
+      or ((pos[1])%self.partitionPeriod[1])==self.partitionPeriodOffset[1] ) 
+            # /\ vert/horiz
 #         ((pos[0]+pos[1])%period)==0 or ((pos[0]-pos[1])%period)==0 ) # diag
 
    def _gradN( self, an, dirn ):
@@ -137,7 +138,7 @@ class loopsIntegrationMatrix( loops ):
          loopInt={'dat':[],'col':[],'i':[0],'counter':0}
       for i,tloopsDef in enumerate( self.loopsDef ):
          for k in tloopsDef:
-            if not sparse:
+            if not self.sparse:
                if k[2]: self.loopIntM[i,k[0]]=k[2]*k[1]
                if k[3]: self.loopIntM[i,k[0]+Ngradients//2]=k[3]*k[1]
             else:
@@ -149,8 +150,8 @@ class loopsIntegrationMatrix( loops ):
                   loopInt['dat'].append( k[3]*k[1] )
                   loopInt['col'].append( k[0]+Ngradients//2 )
                   loopInt['counter']+=1
-         if sparse: loopInt['i'].append(loopInt['counter'])
-      if sparse:
+         if self.sparse: loopInt['i'].append(loopInt['counter'])
+      if self.sparse:
          self.loopIntM=scipy.sparse.csr_matrix(
                (loopInt['dat'],loopInt['col'],loopInt['i']),[Nloops,Ngradients],
                dtype=np.float32)
@@ -195,7 +196,7 @@ class loopsNoiseMatrices( loopsIntegrationMatrix ):
                (ilTlvc,ilTlic,np.cumsum(ilTll)),dtype=np.float32)
          ilIM=ilIM.dot(self.loopIntM.T)
       self.noiseExtM=ilIM.dot(self.loopIntM) # matrix to return the noises, n2
-      if not sparse:
+      if not self.sparse:
          self.noiseReductionM=np.identity(self.numberSubaps*2)-self.noiseExtM 
       else:
          a=scipy.sparse.csr_matrix(
