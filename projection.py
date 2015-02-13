@@ -85,7 +85,7 @@ class geometry(object):
       for i,tPM in enumerate(self.pupilMasks):
          # x-check the masks are 2D arrays or can be coerced as such
          tPM=numpy.array(tPM) # will almost always work
-         if not tPM.dtype in (int,float):
+         if not tPM.dtype in (int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int):
             warningStr="Incompatible dtype for mask {0:d}".format(i+1)
             raise RuntimeError(warningStr)
          if len(tPM.shape)!=2:
@@ -276,22 +276,31 @@ class projection(geometry):
    values.
    '''
    def __init__(self, layerHeights, zenAngles, azAngles, pupilMasks,
-         starHeights=None, pixelScales=1, layerNpix=None, raiseWarnings=True ):
+         starHeights=None, pixelScales=1, layerNpix=None, raiseWarnings=True,
+         sparse=False ):
       geometry.__init__(self, layerHeights, zenAngles, azAngles, pupilMasks,
          starHeights, pixelScales, layerNpix, raiseWarnings)
          # \/ skip the last one, the centre projected mask
       self.maskIdxCumSums=numpy.cumsum( 
             [ len(thisMI) for thisMI in self.maskIdxs[:-1] ])
-   def layerExtractionMatrix(self):
+      self.sparse=sparse
+
+   def layerExtractionMatrix(self,trimmed=False):
       '''Define a layer extraction matrix, that extracts each projected
       mask from the concatenated layer-vector, ignoring the central
       projected mask.
       '''
-      layerIdxOffsets=self.layerIdxOffsets()
+      matrixshape = [ self.maskIdxCumSums[-1]*self.nLayers, None ]
+      if trimmed:
+         trimIdx=self.trimIdx()
+      layerIdxOffsets = self.layerIdxOffsets()
+      matrixshape[1] = layerIdxOffsets[-1] if not trimmed else len(trimIdx)
             # \/ /\ only time [-1] used is for the total size
-      extractionM=numpy.zeros(
-            (self.maskIdxCumSums[-1]*self.nLayers, layerIdxOffsets[-1]),
-            numpy.float64 )
+      if not self.sparse:
+         extractionM = numpy.zeros( matrixshape, numpy.float64 )
+      else:
+         import scipy.sparse, scipy.sparse.linalg
+         extractionM = { 'ij':[[],[]], 'data':[] }
       # matrix can be filled in by saying:
       # for each layer,
       #   for each azimuth angle,
@@ -303,18 +312,37 @@ class projection(geometry):
                   0 if na==0 else self.maskIdxCumSums[na-1] ) )
             indices,fractions=self.maskLayerIdx(nl,na)
             for i in range(len(self.maskIdxs[na])):
-               extractionM[projectedIdxOffset+i,layerIdxOffsets[nl]+indices[i]]\
-                     +=fractions[i]
+               ij0=[ projectedIdxOffset+i ]*len(fractions[i])
+               ij1=( layerIdxOffsets[nl]+indices[i] ).tolist()
+               if trimmed:
+                  ij1=numpy.searchsorted(trimIdx,ij1).tolist()
+               if not self.sparse:
+                  extractionM[ ij0[0], ij1 ]+=fractions[i]
+               else:
+                  extractionM['ij'][0]+=ij0
+                  extractionM['ij'][1]+=ij1
+                  extractionM['data']+=list(fractions[i])
+      if self.sparse:
+         extractionM=scipy.sparse.csr_matrix(
+               (extractionM['data'], extractionM['ij']),
+               matrixshape )
       return extractionM
 
-   def layerCentreProjectionMatrix(self):
+   def layerCentreProjectionMatrix(self,trimmed=False):
       '''Define a layer extraction matrix, that extracts a centrally
       projected mask through the concatenated layer-vector.
       '''
-      layerIdxOffsets=self.layerIdxOffsets()
+      matrixshape = [ len(self.maskIdxs[-1])*self.nLayers, None ]
+      if trimmed:
+         trimIdx=self.trimIdx()
+      layerIdxOffsets = self.layerIdxOffsets()
+      matrixshape[1] = layerIdxOffsets[-1] if not trimmed else len(trimIdx)
             # \/ /\ only time [-1] used is for the total size
-      extractionM=numpy.zeros(
-          [len(self.maskIdxs[-1])*self.nLayers, layerIdxOffsets[-1]], numpy.float64 )
+      if not self.sparse:
+         extractionM=numpy.zeros( matrixshape, numpy.float64 )
+      else:
+         import scipy.sparse, scipy.sparse.linalg
+         extractionM = { 'ij':[[],[]], 'data':[] }
       # matrix can be filled in by saying:
       # for each layer,
       #   for each azimuth angle,
@@ -324,8 +352,20 @@ class projection(geometry):
          projectedIdxOffset=len(self.maskIdxs[-1])*nl
          indices,fractions=self.maskLayerCentreIdx(nl)
          for i in range(len(self.maskIdxs[-1])):
-            extractionM[projectedIdxOffset+i,layerIdxOffsets[nl]+indices[i]]\
-                  +=fractions[i]
+            ij0=[ projectedIdxOffset+i ]*len(indices)
+            ij1=( layerIdxOffsets[nl]+indices[i] ).tolist()
+            if trimmed:
+               ij1=numpy.searchsorted(trimIdx,ij1).tolist()
+            if not self.sparse:
+               extractionM[ ij0[0], ij1 ]+=fractions[i]
+            else:
+               extractionM['ij'][0]+=ij0
+               extractionM['ij'][1]+=ij1
+               extractionM['data']+=list(fractions[i])
+      if self.sparse:
+         extractionM=scipy.sparse.csr_matrix(
+               (extractionM['data'], extractionM['ij']),
+               matrixshape )
       return extractionM 
 
    def trimIdx(self, concatenated=True):
@@ -362,39 +402,49 @@ class projection(geometry):
       layerIdxOffset=self.layerIdxOffsets()[layer]
       return (thisMask!=0).ravel().nonzero()[0]+layerIdxOffset
 
-   def trimLayerExtractionMatrix(self):
-      '''Define a layer extraction matrix, that extracts each projected
-      mask from the trimmed concatenated layer-vector.
+#(redundant?)   def trimLayerExtractionMatrix(self):
+#(redundant?)      '''Define a layer extraction matrix, that extracts each projected
+#(redundant?)      mask from the trimmed concatenated layer-vector.
+#(redundant?)      '''
+#(redundant?)      return numpy.take( self.layerExtractionMatrix(), self.trimIdx(), axis=1 )
+
+   def _sumProjectedMatrix(self, totalPts, summedPts):
+      '''Define a matrix that sums a specified set of points per layer-vector.
       '''
-      return numpy.take( self.layerExtractionMatrix(), self.trimIdx(), axis=1 )
+      matrixshape = [ summedPts, totalPts ]
+      if not self.sparse:
+         sumProjM=numpy.zeros( matrixshape, numpy.float64 )
+      else:
+         import scipy.sparse, scipy.sparse.linalg
+         sumProjM = { 'ij':[[],[]], 'data':[] }
+      # pretty straightforward, just ones for each layer's projection
+      if self.sparse:
+         for i in range(summedPts):
+            sumProjM['ij'][0]+=[i]*self.nLayers
+            sumProjM['ij'][1]+=range(i,self.nLayers*summedPts,summedPts)
+         sumProjM=scipy.sparse.csr_matrix(
+               ([1]*totalPts, sumProjM['ij']), matrixshape )
+      else: 
+         sumProjIdx=(
+                numpy.arange(self.nLayers)*summedPts\
+               +numpy.arange(summedPts).reshape([-1,1])*(1+totalPts)
+            ).ravel()
+         sumProjM.ravel()[ sumProjIdx ]=1
+      return sumProjM
 
    def sumProjectedMatrix(self):
-      '''Define a matrix that sums the projected mask per layer-vector.
+      '''Define a matrix that sums the centre projected mask per layer-vector.
       '''
       totalPts=self.maskIdxCumSums[-1]*self.nLayers
       summedPts=self.maskIdxCumSums[-1]
-      sumProjM=numpy.zeros( [ summedPts, totalPts ], numpy.float64 )
-      # pretty straightforward, just ones for each layer's projection
-      sumProjIdx=(
-             numpy.arange(self.nLayers)*summedPts\
-            +numpy.arange(summedPts).reshape([-1,1])*(1+totalPts)
-         ).ravel()
-      sumProjM.ravel()[ sumProjIdx ]=1
-      return sumProjM
+      return self._sumProjectedMatrix( totalPts, summedPts )
 
    def sumCentreProjectedMatrix(self):
       '''Define a matrix that sums the centre projected mask per layer-vector.
       '''
       totalPts=len(self.maskIdxs[-1])*self.nLayers
       summedPts=len(self.maskIdxs[-1])
-      sumProjM=numpy.zeros( [ summedPts, totalPts ], numpy.float64 )
-      # pretty straightforward, just ones for each layer's projection
-      sumProjIdx=(
-             numpy.arange(self.nLayers)*summedPts\
-            +numpy.arange(summedPts).reshape([-1,1])*(1+totalPts)
-         ).ravel()
-      sumProjM.ravel()[ sumProjIdx ]=1
-      return sumProjM
+      return self._sumProjectedMatrix( totalPts, summedPts )
 
 ####
 ## class projectedModalBasis
@@ -435,83 +485,78 @@ def edgeDetector(mask, clip=8):
                            mask,filter,mode='constant'))).ravel().nonzero()[0]
 
 if __name__=='__main__':
-   import Zernike
    import matplotlib.pyplot as pg
    import sys
 
-   mask=Zernike.anyZernike(1,10,5,ongrid=1)-Zernike.anyZernike(1,10,2,ongrid=1)
-
-#   \/ simplified geometry
+   rad=10
+   #   \/ simplified geometry
    nAzi=4
    gsHeight=3
-   thisProj=projection(
-      numpy.array([0,1]),
-      numpy.array([1]*nAzi),
-      numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
-      gsHeight )
-   thisProj.define()
-   okay=thisProj.createLayerMasks()
-   if not okay:
-      raise ValueError("Eek!")
+
+   circ = lambda b,r : (numpy.add.outer(
+         (numpy.arange(b)-(b-1.0)/2.0)**2.0,
+         (numpy.arange(b)-(b-1.0)/2.0)**2.0 )**0.5<=r).astype( numpy.int32 )
+   mask=circ(rad,rad/2)-circ(rad,rad/2*0.25)
+
+   thisProj,layerExM,layerExUTM,sumPrM,sumLayerExM={},{},{},{},{}
+   for sparse in (1,0):
+      thisProj[sparse]=projection(
+            numpy.array([0,1]),
+            numpy.array([1]*nAzi),
+            numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
+            gsHeight,
+            sparse=sparse )
+      thisProj[sparse].define()
+      okay=thisProj[sparse].createLayerMasks()
+      if not okay:
+         raise ValueError("Eek!")
+      # try projection
+      print("{0:s}:Projection matrix calcs...".format(
+            "sparse" if sparse else "dense"), end="")
+      layerExUTM[sparse]=thisProj[sparse].layerExtractionMatrix(0)
+      layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
+      layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
+      sumPrM[sparse]=thisProj[sparse].sumProjectedMatrix()
+      sumLayerExM[sparse]=sumPrM[sparse].dot( layerExM[sparse] )
+      print("(done)")
+
+   assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
+         "layerExM sparse!=dense"
+   assert ( numpy.array( sumPrM[1].todense() )-sumPrM[0] ).var()==0,\
+         "sumPrM sparse!=dense"
+   assert ( numpy.array( sumLayerExM[1].todense() )-sumLayerExM[0] ).var()==0,\
+         "sumLayerExM sparse!=dense"
+   assert ( layerExUTM[0].take( thisProj[0].trimIdx(), axis=1 )-layerExM[0]
+            ).var()==0, "layerExM inbuilt trimming failed"
 
    pg.figure()
    pg.gray()
    pg.subplot(2,2,1)
    pg.title("layer masks")
-   pg.imshow( thisProj.layerMasks[0].sum(axis=0), interpolation='nearest' )
+   pg.imshow( thisProj[0].layerMasks[0].sum(axis=0), interpolation='nearest' )
    pg.subplot(2,2,2)
-   pg.imshow( thisProj.layerMasks[1].sum(axis=0), interpolation='nearest' )
+   pg.imshow( thisProj[0].layerMasks[1].sum(axis=0), interpolation='nearest' )
    pg.subplot(2,2,3)
-   pg.imshow( thisProj.layerMasks[0].sum(axis=0)>0, interpolation='nearest' )
+   pg.imshow( thisProj[0].layerMasks[0].sum(axis=0)>0, interpolation='nearest' )
 
    # fix a mask for the upper layer
-   projectedMask=(thisProj.layerMasks[1].sum(axis=0)>0)*1.0
-   edgeIdx=edgeDetector(projectedMask,clip=7)
-   cds=lambda x : numpy.arange(x)-(x-1)/2.0
-##   centreOffset = (
-##      int(numpy.sign(thisProj.centreIdx[1])\
-##         *(abs(thisProj.centreIdx[1])%thisProj.layerNpix[1,1])),
-##      int(thisProj.centreIdx[1]/float(thisProj.layerNpix[1,1]))
-##                  )
-##   radius=numpy.add.outer(
-##      centreOffset[0]+cds(thisProj.layerNpix[1,0])**2.0,
-##      centreOffset[1]+cds(thisProj.layerNpix[1,1])**2.0 )**0.5
-##   edgeRadii=radius.ravel()[edgeIdx]
-
+   projectedMask=(thisProj[0].layerMasks[1].sum(axis=0)>0)*1.0
    pg.subplot(2,2,4)
    pg.imshow( projectedMask, interpolation='nearest' )
-##   circle=pg.Circle( [(thisProj.layerNpix[1,dirn]-1)/2.0 for dirn in (1,0)],
-##      radius=edgeRadii.min(),lw=2,ec='w',fill=False)
-##   patch=pg.gca().add_patch(circle)
-##   # now, if there are small holes, want to find the smallest and the largest
-##   # which is about 1/2 the layerNpix radius
-##   if (edgeRadii.min()/thisProj.layerNpix[1].mean())<0.30:
-##      newEdgeRadii=edgeRadii[numpy.flatnonzero( edgeRadii>edgeRadii.min() )]
-##      circle2=pg.Circle( 
-##         [centreOffset[dirn]+(thisProj.layerNpix[1,dirn]-1)/2.0
-##            for dirn in (1,0)],
-##         radius=newEdgeRadii.min(),lw=2,ls='dashed',ec='w',fill=False)
-##      patch2=pg.gca().add_patch(circle2)
-##      print("2ndary drawn")
 
    pg.draw()
 
-   # try projection
-   print("Projection matrix calcs...",end="")
-   layerExM=thisProj.layerExtractionMatrix()
-   sumPrM=thisProj.sumProjectedMatrix()
-   trimIdx=thisProj.trimIdx()
-   sumLayerExM=numpy.dot( sumPrM, layerExM.take(trimIdx,axis=1) )
-   print("(done)")
-
       # \/ random values as a substitute dataset
-   random=[ numpy.random.uniform(-1,1,size=tS) for tS in thisProj.layerNpix ]
+   random=[ numpy.random.uniform(-1,1,size=tS) for tS in thisProj[0].layerNpix ]
    print("Input creation...",end="")
    randomA=[ numpy.ma.masked_array(random[i],
-         thisProj.layerMasks[i].sum(axis=0)==0) for i in (0,1) ]
+         thisProj[0].layerMasks[i].sum(axis=0)==0) for i in (0,1) ]
    randomV=(1*random[0].ravel()).tolist()+(1*random[1].ravel()).tolist()
-   randomExV=numpy.take( randomV, trimIdx )
-   randomProjV=numpy.dot( sumLayerExM, randomExV )
+   randomExV=numpy.take( randomV, thisProj[0].trimIdx() )
+   randomProjV={0: numpy.dot( sumLayerExM[0], randomExV ),
+                1: numpy.array(sumLayerExM[1].dot( randomExV ))
+               }
+   assert (randomProjV[0]-randomProjV[1]).var(), "randomProjV, sparse!=dense"
    print("(done)")
    
       # \/ create an imagable per-projection array of the random values
@@ -519,8 +564,10 @@ if __name__=='__main__':
       numpy.zeros([5]+list(mask.shape),numpy.float64),
       (mask*numpy.ones([5,1,1]))==0, astype=numpy.float64)
    projectedRdmVA.ravel()[
-      (thisProj.maskIdxs[-1]+(numpy.arange(0,5)*mask.shape[0]*mask.shape[1]).reshape([-1,1])).ravel() ]\
-         =randomProjV*numpy.ones(len(randomProjV))
+      (thisProj[0].maskIdxs[-1]
+       +(numpy.arange(0,5)*mask.shape[0]*mask.shape[1]
+        ).reshape([-1,1])).ravel() ]=\
+            randomProjV[0]*numpy.ones(len(randomProjV[0]))
 
    pg.figure()
    for i in range(nAzi):
@@ -530,75 +577,73 @@ if __name__=='__main__':
    pg.xlabel("layer values")
    pg.draw()
 
-   # correlate to be sure
-   # do the first with the next four
-   print("XC...",end="")
-   nfft=128
-   fpRVA=numpy.fft.fft2(projectedRdmVA,s=[nfft,nfft])
-   fpRVA[:,0,0]=0
-   smilT2= lambda x :\
-      numpy.roll(numpy.roll( x,x.shape[-2]/2,axis=-2 ),x.shape[-1]/2,axis=-1)
-   xc=numpy.array([ numpy.fft.ifft2(fpRVA[0].conjugate()*fpRVA[i])
-      for i in range(0,5) ])
-   xc=numpy.array([ 
-      smilT2(txc)[nfft/2-mask.shape[0]/2:nfft/2+mask.shape[0]/2,
-          nfft/2-mask.shape[1]/2:nfft/2+mask.shape[1]/2] for txc in xc ])
-   pg.figure()
-   for i in range(nAzi-1):
-      pg.subplot(2,2,i+1)
-      pg.imshow( abs(xc[i+1]-xc[0])**2.0, interpolation='nearest' )
-      pg.title("xc (1,{0:1d})".format(i+1+1))
-   print("(done)")
-   pg.draw()
+#(not useful)    # correlate to be sure
+#(not useful)    # do the first with the next four
+#(not useful)    print("XC...",end="")
+#(not useful)    nfft=128
+#(not useful)    fpRVA=numpy.fft.fft2(projectedRdmVA,s=[nfft,nfft])
+#(not useful)    fpRVA[:,0,0]=0
+#(not useful)    smilT2= lambda x :\
+#(not useful)       numpy.roll(numpy.roll( x,x.shape[-2]/2,axis=-2 ),x.shape[-1]/2,axis=-1)
+#(not useful)    xc=numpy.array([ numpy.fft.ifft2(fpRVA[0].conjugate()*fpRVA[i])
+#(not useful)       for i in range(0,5) ])
+#(not useful)    xc=numpy.array([ 
+#(not useful)       smilT2(txc)[nfft/2-mask.shape[0]/2:nfft/2+mask.shape[0]/2,
+#(not useful)           nfft/2-mask.shape[1]/2:nfft/2+mask.shape[1]/2] for txc in xc ])
+#(not useful)    pg.figure()
+#(not useful)    for i in range(nAzi-1):
+#(not useful)       pg.subplot(2,2,i+1)
+#(not useful)       pg.imshow( abs(xc[i+1]-xc[0])**2.0, interpolation='nearest' )
+#(not useful)       pg.title("xc (1,{0:1d})".format(i+1+1))
+#(not useful)    print("(done)")
+#(not useful)    pg.draw()
 
    # now, try straight inversion onto the illuminated portions of the layers 
-   # with regularisation and via SVD
+   # with SVD (regularization disabled)
    print("Inversion...",end="")
-   sTs=numpy.dot(sumLayerExM.transpose(),sumLayerExM)
-   print(".",end="");sys.stdout.flush()
-   sTs_invR=numpy.linalg.inv( sTs + 0.1*numpy.identity(len(trimIdx)) )
-   print(".",end="");sys.stdout.flush()
-   sTs_invSVD=numpy.linalg.pinv( sTs )
-   print(".",end="");sys.stdout.flush()
-   recoveryM=[ numpy.dot( thissTsI, sumLayerExM.transpose() )
-      for thissTsI in (sTs_invR,sTs_invSVD) ]
-   recoveryM.append( numpy.linalg.pinv( sumLayerExM ) ) # directly
+##(disabled)   sTs=sumLayerExM[0].T.dot(sumLayerExM[0])
+##(disabled)   sTs_invR=numpy.linalg.inv( sTs + 0.1*numpy.identity(len(trimIdx)) )
+##(disabled)   print(".",end="");sys.stdout.flush()
+##(disabled)   sTs_invSVD=numpy.linalg.pinv( sTs )
+##(disabled)   print(".",end="");sys.stdout.flush()
+##(disabled)   recoveryM=[ numpy.dot( thissTsI, sumLayerExM.transpose() )
+##(disabled)      for thissTsI in (sTs_invR,sTs_invSVD) ]
+##(disabled)   recoveryM.append( numpy.linalg.pinv( sumLayerExM[0] ) ) # directly
+   recoveryM=( numpy.linalg.pinv( sumLayerExM[0] ) ) # directly
    print("(done)")
 
 
    print("Recon...",end="")
-   recoveredV=[ numpy.dot( thisrecoveryM, randomProjV )
-      for thisrecoveryM in recoveryM ]
+   recoveredV=numpy.dot( recoveryM, randomProjV[0] )
    recoveredLayersA=[[
-      numpy.ma.masked_array(numpy.zeros(thisProj.layerNpix[i], numpy.float64),
-         thisProj.layerMasks[i].sum(axis=0)==0) for i in (0,1)]
+      numpy.ma.masked_array(numpy.zeros(thisProj[0].layerNpix[i], numpy.float64),
+         thisProj[0].layerMasks[i].sum(axis=0)==0) for i in (0,1)]
             for j in range(len(recoveryM)) ]
-   layerInsertionIdx=thisProj.trimIdx(False)
+   layerInsertionIdx=thisProj[0].trimIdx(False)
    print("(done)")
 
-   for j in range(len(recoveryM)):
-      print("Type {0:d}".format(j+1))
-      pg.figure()
-      for i in range(thisProj.nLayers):
-         recoveredLayersA[j][i].ravel()[layerInsertionIdx[i][1]]=\
-            recoveredV[j][layerInsertionIdx[i][0]:layerInsertionIdx[i+1][0]]
-         pg.title("layer 1, recon type="+str(j+1))
-         pg.subplot(2,3,1+i*3)
-         pg.imshow( recoveredLayersA[j][i]-recoveredLayersA[j][i].mean(),
-            interpolation='nearest',vmin=-1,vmax=1 )
-         pg.xlabel("recov'd")
-         pg.subplot(2,3,2+i*3)
-         pg.imshow( randomA[i]-randomA[i].mean(),
-            interpolation='nearest',vmin=-1,vmax=1 )
-         pg.xlabel("actual")
-         pg.subplot(2,3,3+i*3)
-         pg.imshow( recoveredLayersA[j][i]-randomA[i],
-            interpolation='nearest',vmin=-1,vmax=1 )
-         pg.xlabel("diff")
-         print(" Layer#{0:d}".format(i+1))
-         print("  Original RMS={0:5.3f}".format(randomA[i].var()))
-         print("  Difference RMS={0:5.3f}".format(
-            (randomA[i]-recoveredLayersA[j][i]).var()))
+   j=0
+   pg.figure()
+   for i in range(thisProj[0].nLayers):
+      recoveredLayersA[j][i].ravel()[layerInsertionIdx[i][1]]=\
+         recoveredV[layerInsertionIdx[i][0]:layerInsertionIdx[i+1][0]]
+      pg.title("layer 1, recon type="+str(j+1))
+      pg.subplot(2,3,1+i*3)
+      pg.imshow( recoveredLayersA[j][i]-recoveredLayersA[j][i].mean(),
+         interpolation='nearest',vmin=-1,vmax=1 )
+      pg.xlabel("recov'd")
+      pg.subplot(2,3,2+i*3)
+      pg.imshow( randomA[i]-randomA[i].mean(),
+         interpolation='nearest',vmin=-1,vmax=1 )
+      pg.xlabel("actual")
+      pg.subplot(2,3,3+i*3)
+      pg.imshow( recoveredLayersA[j][i]-randomA[i],
+         interpolation='nearest',vmin=-1,vmax=1 )
+      pg.xlabel("diff")
+      print(" Layer#{0:d}".format(i+1))
+      print("  Original RMS={0:5.3f}".format(randomA[i].var()))
+      print("  Difference RMS={0:5.3f}".format(
+         (randomA[i]-recoveredLayersA[j][i]).var()))
 
    pg.waitforbuttonpress()
 
