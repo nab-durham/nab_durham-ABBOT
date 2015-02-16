@@ -409,7 +409,7 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
    divisions.
    """
    avoidedRows=[] # record overlaps of summations with the same offset 
-   if type(boundary)==int: print("Boundary crossing avoided=BCA")
+###   if type(boundary)==int: print("Boundary crossing avoided=BCA")
    smmtnsLen=0
    createSVO=False
    if type(smmtnsVOffsets)==types.NoneType:
@@ -461,7 +461,7 @@ def smmtnsDefMatrices(smmtnsOvlps, smmtnsDef, smmtnsDefChStrts,
                   smmtnsDef[0][tcO[0]][0][0]//boundary
                             !=smmtnsDef[1][tcO[1]][0][0]//boundary):
             if i not in avoidedRows: avoidedRows.append(i)
-            print("( BCA{0:d} )".format(i),end="")
+###            print("( BCA{0:d} )".format(i),end="")
             continue
 #         if type(boundary)==type(1) and (
 #		smmtnsDef[0][tcO[0]][0][tcO[2]]%boundary
@@ -1111,23 +1111,24 @@ if __name__=="__main__":
       pyp.waitforbuttonpress()
 
 # \/ configuration here_______________________ 
-   N=[32,-1] ; #N[1]=(N[0]*6)//39. # size
+   N=[64,-1] ; #N[1]=(N[0]*6)//39. # size
    r0=2 ; L0=10*r0#N[0]/3.0
    noDirectInv=False # if true, don't attempt MMSE
    doSparse=1
    smmtnPeriodicBound=8#[None,16,8,4,2,N[0]+1][2]# optional 
    smmtnMaxLength=None # better to use periodic-boundaries than fixed lengths
-   gradNoiseVarScal=1.0 # multiplier of gradient noise
+   gradNoiseVarScal=0.5 # multiplier of gradient noise
    smmtnOvlpType=0.10    # 0=direct x-over, 1=intermediate x-over
       # /\ (0.15 -> best with VK , 0 -> best c. random
       #     WITH NO NOISE)
    dopinv=False 
    doShortSmmtns=0 # True = don't include summation boundary truncation overlaps
    disableNoiseReduction=0
-   contLoopBoundaries=[ N[0]+1, N[0]/2, smmtnPeriodicBound ][-1]
+   contLoopBoundaries=[
+         N[0]+1, N[0]/2, smmtnPeriodicBound, smmtnPeriodicBound*2 ][-1]
    laplacianSmoother=1e-6
    OEregVal=1e-6 # offset est. regularization value, 1e-2 is usually good
-   sortedvector=2 # True means the summation vector is sorted by summation
+   sortedvector=True # True means the summation vector is sorted by summation
                   #start position
    oeblocked=1  # 0 use old summation update method with no block reduction
                 # 1 use new method with block reduction
@@ -1214,9 +1215,8 @@ if __name__=="__main__":
       print("...",end="") ; sys.stdout.flush()
       noiseExtM,noiseReductionM=loopsNoiseReduction.returnOp()
       print("({0:3.1f}s, done)".format(time.time()-ts),end="")
-      print("(fraction=0:{0:3.1f}s)".format(
-            noiseReductionM.nonzero()[0].shape[0]*
-            noiseReductionM.shape[0]**-2.0 ))
+      print("(fraction={0:3.0f}%)".format(
+            100*noiseReductionM.getnnz()*noiseReductionM.shape[0]**-2.0 ))
       sys.stdout.flush()
    
    print("N,N_={0:d},{1:d}".format(gInst.n[0],gInst.n_[0]))
@@ -1225,11 +1225,11 @@ if __name__=="__main__":
 #   wl=8.0;ip=numpy.cos(2*numpy.pi*wl**-1.0*(x+y)*2**0.5)
    ip=x
    #ip=numpy.zeros(len(x)) ; ip[int(numpy.random.uniform(0,len(x)))]=1
-   import kolmogorov
-   rdm=kolmogorov.TwoScreens(N[0]*2,r0)[0][:N[0],:N[0]].ravel().take(gInst.illuminatedCornersIdx)
+##   import kolmogorov
+##   rdm=kolmogorov.TwoScreens(N[0]*2,r0)[0][:N[0],:N[0]].ravel().take(gInst.illuminatedCornersIdx)
    
 ###3   rdm=ip
-###3   rdm=numpy.random.normal(size=gInst.numberPhases) # what to reconstruct
+   rdm=numpy.random.normal(size=gInst.numberPhases) # what to reconstruct
 ###3   rdm=numpy.add.outer(
 ###3            numpy.arange(N[0]),
 ###3            numpy.arange(N[0])#,0,-1)
@@ -1503,7 +1503,7 @@ if __name__=="__main__":
             idx=numpy.array(smmtnsDef[dirn][smmtnNo][0])
             comp[ (N[0]**2 if dirn==1 else 0)+idx ]+=smmtns[dirn][smmtnNo]
             updates[ (N[0]**2 if dirn==1 else 0)+idx ]+=1
-            print("<{0:d},{1:d}>".format(subgridRow,smmtnNo),end=" ")
+###            print("<{0:d},{1:d}>".format(subgridRow,smmtnNo),end=" ")
       # <<< new, pipeline-compatible algorithm ends ]
    
    print("(done)") ; sys.stdout.flush()
@@ -1553,11 +1553,13 @@ if __name__=="__main__":
    # >---- begins ----> *** DIRECT INV. ***
       # try mmse inversion
       print("mmse start...",end="") ; sys.stdout.flush()
+      ts=time.time()
       lO=gradientOperator.laplacianOperatorType1(
             pupilMask=pupAp*1,sparse=doSparse )
       lM=lO.returnOp()
-      print("(done)") ; sys.stdout.flush()
+      print(" ({0:3.2f}s done)".format(time.time()-ts)) ; sys.stdout.flush()
 
+      ts=time.time()
       if not doSparse:
          print(" inversion...",end="") ; sys.stdout.flush()
          if dopinv:
@@ -1568,7 +1570,7 @@ if __name__=="__main__":
                  +numpy.dot(lM.T,lM)*laplacianSmoother), gO.T)
          print("...",end="") ; sys.stdout.flush()
          invSol=numpy.dot(invO,gradV)
-         print("(done)") ; sys.stdout.flush()
+         print(" ({0:3.2f}s done)".format(time.time()-ts)) ; sys.stdout.flush()
       else:
          print(" sparse CG...",end="") ; sys.stdout.flush()
          _A=gO.transpose().tocsr().dot(gO)
@@ -1584,20 +1586,18 @@ if __name__=="__main__":
                   "Stopping.".format(linalgRes[0]))
          else:
             invSol=linalgRes[0]
-         print("(done)") ; sys.stdout.flush()
+         print(" ({0:3.2f}s done)".format(time.time()-ts)) ; sys.stdout.flush()
       
       invViz=rdmViz.copy() ; invViz.ravel()[gInst.illuminatedCornersIdx]=invSol
    # <---- ends ------< *** DIRECT INV. ***
 
-
-
-   print("rdm.var={0:5.3f}".format(rdmViz.var()))
-   print("comp.var={0:5.3f}".format(compBothViz.var()))
-   print("hwr.var={0:5.3f}".format(hwrViz.var()))
-   print("mmse.var={0:5.3f}".format(invViz.var()))
+   print("rdm.var       ={0:5.3f}".format(rdmViz.var()))
+   print("comp.var      ={0:5.3f}".format(compBothViz.var()))
    print("(rdm-comp).var={0:7.5f}".format((rdmViz-compBothViz).var()))
-   print("(rdm-hwr).var={0:7.5f}".format((rdmViz-hwrViz).var()))
+   print("hwr.var       ={0:5.3f}".format(hwrViz.var()))
+   print("(rdm-hwr).var ={0:7.5f}".format((rdmViz-hwrViz).var()))
    if 'invViz' in dir():
+      print("mmse.var      ={0:5.3f}".format(invViz.var()))
       print("(rdm-mmse).var={0:7.5f}".format((rdmViz-invViz).var()))
 
    if len(raw_input("plot compBothViz? (blank=don't)"))>0:
@@ -1670,6 +1670,3 @@ if __name__=="__main__":
             vmin=-0.1,vmax=0.1)
       pyp.title("ATA_sI")
       print("]",end="") ; sys.stdout.flush()
-      
-
-
