@@ -86,7 +86,8 @@ class geometry(object):
          # x-check the masks are 2D arrays or can be coerced as such
          tPM=numpy.array(tPM) # will almost always work
          if not tPM.dtype in (
-            int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int,numpy.float32,numpy.float64):
+               int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int,
+               numpy.float32,numpy.float64):
             warningStr="Incompatible dtype for mask {0:d}".format(i+1)
             raise RuntimeError(warningStr)
          if len(tPM.shape)!=2:
@@ -353,7 +354,7 @@ class projection(geometry):
          projectedIdxOffset=len(self.maskIdxs[-1])*nl
          indices,fractions=self.maskLayerCentreIdx(nl)
          for i in range(len(self.maskIdxs[-1])):
-            ij0=[ projectedIdxOffset+i ]*len(indices)
+            ij0=[ projectedIdxOffset+i ]*len(fractions[i])
             ij1=( layerIdxOffsets[nl]+indices[i] ).tolist()
             if trimmed:
                ij1=numpy.searchsorted(trimIdx,ij1).tolist()
@@ -546,8 +547,9 @@ if __name__=='__main__':
    def test_projection(ip,success,failure):
       global thisProj,layerExM,sumPrM,sumLayerExM
       (nAzi,gsHeight,mask)=ip
-      thisProj,layerExM,layerExUTM,sumPrM,sumLayerExM={},{},{},{},{}
-      for sparse in (1,0):
+      (thisProj,layerExM,layerExUTM,sumPrM,sumCentPrM,sumLayerExM,layerCentExM,
+         sumLayerCentExM)={},{},{},{},{},{},{},{}
+      for sparse in (0,1):
          thisProj[sparse]=projection(
                numpy.array([0,1]),
                numpy.array([1]*nAzi),
@@ -562,26 +564,73 @@ if __name__=='__main__':
          print("{0:s}:Projection matrix calcs...".format(
                "sparse" if sparse else "dense"), end="")
          layerExUTM[sparse]=thisProj[sparse].layerExtractionMatrix(0)
-         layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
+         #
          layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
          sumPrM[sparse]=thisProj[sparse].sumProjectedMatrix()
+         layerCentExM[sparse]=thisProj[sparse].layerCentreProjectionMatrix(1)
+         sumCentPrM[sparse]=thisProj[sparse].sumCentreProjectedMatrix()
+         #
          sumLayerExM[sparse]=sumPrM[sparse].dot( layerExM[sparse] )
+         sumLayerCentExM[sparse]=sumCentPrM[sparse].dot( layerCentExM[sparse] )
          print("(done)")
 
       # TEST: basic matrices comparison between sparse and dense
-      assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
+      try:
+         assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
             "layerExM sparse!=dense"
-      success+=1
-      assert ( numpy.array( sumPrM[1].todense() )-sumPrM[0] ).var()==0,\
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert (numpy.array(layerCentExM[1].todense())-layerCentExM[0]
+               ).var()==0, "layerExM sparse!=dense"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert ( numpy.array( sumPrM[1].todense() )-sumPrM[0] ).var()==0,\
             "sumPrM sparse!=dense"
-      success+=1
-      assert ( numpy.array( sumLayerExM[1].todense() )-sumLayerExM[0] 
-            ).var()==0, "sumLayerExM sparse!=dense"
-      success+=1
-      assert ( layerExUTM[0].take( thisProj[0].trimIdx(), axis=1 )-layerExM[0]
-            ).var()==0, "layerExM inbuilt trimming failed"
-      success+=1
-
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert (numpy.array(sumCentPrM[1].todense())-sumCentPrM[0]).var()==0,\
+            "sumCentPrM sparse!=dense"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert ( numpy.array( sumLayerExM[1].todense() )-sumLayerExM[0] 
+               ).var()==0, "sumLayerExM sparse!=dense"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert ( numpy.array(sumLayerCentExM[1].todense())-sumLayerCentExM[0] 
+               ).var()==0, "sumLayerCentExM sparse!=dense"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         assert ( layerExUTM[0].take( thisProj[0].trimIdx(), axis=1 )-
+               layerExM[0] ).var()==0, "layerExM inbuilt trimming failed"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
       # TEST: input means 
       tilts=lambda s : numpy.add.outer(
             numpy.arange(-s[0]/2,s[0]/2),
@@ -592,28 +641,75 @@ if __name__=='__main__':
       ip=[ quadratic(tS) for tS in thisProj[0].layerNpix ]
          # now, take each mask as projected and compute the sum of the mean
          # of the projected tilt and this is our comparison
-      expectedIpMean=[
-            [ (ip[j]*thisProj[0].layerMasks[j][i]!=0).sum() 
-               for i in range(nAzi) ]
-                  for j in (0,1) ]
-      #           
       ipV=(ip[0].ravel()).tolist()+(ip[1].ravel()).tolist()
+      #           
       ipExV=numpy.take( ipV, thisProj[0].trimIdx() )
-      ipProjV={0: numpy.dot( sumLayerExM[0], ipExV ),
-               1: numpy.array( sumLayerExM[1].dot( ipExV ))}
-      assert (ipProjV[0]-ipProjV[1]).var(), "ipProjV, sparse!=dense"
-      success+=1
-      liO=[0]+numpy.cumsum([
-            (thisProj[0].layerMasks[i][:].sum(axis=0)!=0).sum()
-            for i in (0,1) ]).tolist()
+      ipProjV={
+               0: numpy.dot( sumLayerExM[0], ipExV ),
+               1: numpy.array( sumLayerExM[1].dot( ipExV ))
+            }
+      ipCentProjV={
+               0: numpy.dot( sumLayerCentExM[0], ipExV ),
+               1: numpy.array( sumLayerCentExM[1].dot( ipExV ))
+            }
+      try:
+         test=(ipProjV[0]-ipProjV[1]).var()
+         assert test<1e-10, "ipProjV, var{sparse-dense}>1e-10:"+str(test)
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      try:
+         test=(ipCentProjV[0]-ipCentProjV[1]).var()
+         assert test<1e-10, "ipCentProjV, var{sparse-dense}>1e-10"+str(test)
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
       lmIdx=[ thisProj[0].maskInLayerIdx(
             i,thisProj[0].layerMasks[i].sum(axis=0)) for i in (0,1) ]
-      print(ip[0].shape,ip[1].shape, lmIdx[1].min(),lmIdx[1].max())
-      maskDerivedMean=[ ip[i].ravel()[lmIdx[i]].sum() for i in (0,1) ]
-      print(sum(ipV[liO[0]:liO[1]]),sum(ipV[liO[1]:liO[2]]),
-         maskDerivedMean, expectedIpMean )
+      maskDerivedMean=[ numpy.take(ipV,lmIdx[i]).sum() for i in (0,1) ]
+      expectedIpMean=numpy.array(
+            [ (ip[j]*(thisProj[0].layerMasks[j][:].sum(axis=0)!=0)).sum()
+                  for j in (0,1) ])
+      try:
+         assert ( maskDerivedMean==expectedIpMean ).all(),\
+               "maskInLayerIdx discrepancy"
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
       #
-      print(ipExV.shape,ipProjV[0].shape,mask.shape)
+      expectedIpPerMask=numpy.array([
+            [ (ip[j]*thisProj[0].layerMasks[j][i]).sum()
+                  for j in (0,1) ] for i in range(nAzi+1)])
+      maskL=mask.sum()
+      for i in range(nAzi):
+         try:
+            test=( expectedIpPerMask[i].sum()-
+                  ipProjV[0][maskL*i:maskL*(i+1)].sum() )
+            assert abs(test)<1e-3,\
+                ("expectedIpPerMask[{0:d}]-that from projected"+
+                 ", summed vector>1e-3/{1:f}").format(i,test)
+         except:
+            failure+=1
+            print(sys.exc_info()[1])
+         else:
+            success+=1
+      try:
+         test=( expectedIpPerMask[-1].sum()-ipCentProjV[0].sum() )
+         assert abs(test)<1e-3,\
+             ("expectedIpPerMask[-1]-that from centre projected"+
+              ", summed vector>1e-3/{1:f}").format(test)
+      except:
+         failure+=1
+         print(sys.exc_info()[1])
+      else:
+         success+=1
+      #
       return success,failure
 
    import datetime, sys
@@ -629,13 +725,17 @@ if __name__=='__main__':
          (numpy.arange(b)-(b-1.0)/2.0)**2.0,
          (numpy.arange(b)-(b-1.0)/2.0)**2.0 )**0.5<=r).astype( numpy.int32 )
    mask=circ(rad,rad/2)-circ(rad,rad/2*0.25)
-
-   success,failure=test_geometry([nAzi,gsHeight,mask],0,0)
-   success,failure=test_projection([nAzi,gsHeight,mask],success,failure)
    #
+   success,failure=test_geometry([nAzi,gsHeight,mask],0,0)
    total=success+failure
    succeeded,failed=success,failure
-   print("SUMMARY: {0:d}->{1:d} successes and {2:d} failures".format(
+   print("SUMMARY:geometry: {0:d}->{1:d} successes and {2:d} failures".format(
+         total, succeeded, failed))
+   #
+   success,failure=test_projection([nAzi,gsHeight,mask],0,0)
+   total=success+failure
+   succeeded,failed=success,failure
+   print("SUMMARY:projection: {0:d}->{1:d} successes and {2:d} failures".format(
          total, succeeded, failed))
    print("ENDS:"+str(datetime.datetime.now()))
    sys.exit( failed>0 )
