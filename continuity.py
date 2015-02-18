@@ -288,6 +288,7 @@ class loopsNoiseMatrices( loopsIntegrationMatrix ):
 ##
 
 if __name__=="__main__":
+   import datetime
    import sys
 
    def doSubapMask(roundAp,nfft):
@@ -300,7 +301,7 @@ if __name__=="__main__":
       else:
          return numpy.ones([nfft-1]*2,numpy.int32) # square
       
-   def doFormalTest_NR():
+   def doFormalTest():
       global rdmIp_N, rdmIp_R, noiseExtM, noiseReductionM,\
             loopsNoiseReduction,rdmIp, success, failure,\
             loopTestslopes
@@ -308,7 +309,6 @@ if __name__=="__main__":
       failure={}
       #
       subapMask=doSubapMask(1,32)
-      print("Making gO...",end="")
       gO=gradientOperator.gradientOperatorType1(
           subapMask=subapMask, sparse=0 )
       gM_d=gO.returnOp()
@@ -319,7 +319,6 @@ if __name__=="__main__":
             "FAILURE: i/p unexpected : "+str(
                   abs(rdmIp.var()-1.0337514094811717) )
       rdmIp_clean=gM_d.dot(gM_inv.dot(rdmIp))
-      print("(done)")
       reorderingIdx=[]
       for i in range(gO.numberSubaps):
          reorderingIdx+=[i,i+gO.numberSubaps]
@@ -462,12 +461,16 @@ if __name__=="__main__":
       # 
       return (success, failure)
    #
-   success,failure=doFormalTest_NR()
+   titleStr="continuity.py, automated testing"
+   print("\n{0:s}\n{1:s}\n".format(titleStr,len(titleStr)*"^")
+   print("BEGINS:"+str(datetime.datetime.now()))
+   success,failure=doFormalTest()
    succeeded,failed,total=0,0,0
    for tk in failure:
       failed+=failure[tk][0]
       succeeded+=success[tk][0]
       total+=failure[tk][0]+success[tk][0]
-   print(("SUMMARY: out of {0:d}, there were {1:d} successes and {2:d}"+
-          " failures").format(total, succeeded, failed))
+   print("SUMMARY: {0:d}->{1:d} successes and {2:d} failures".format(
+         total, succeeded, failed))
+   print("ENDS:"+str(datetime.datetime.now()))
    sys.exit( failed>0 )

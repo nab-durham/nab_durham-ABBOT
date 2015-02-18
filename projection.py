@@ -85,7 +85,8 @@ class geometry(object):
       for i,tPM in enumerate(self.pupilMasks):
          # x-check the masks are 2D arrays or can be coerced as such
          tPM=numpy.array(tPM) # will almost always work
-         if not tPM.dtype in (int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int):
+         if not tPM.dtype in (
+            int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int,numpy.float32,numpy.float64):
             warningStr="Incompatible dtype for mask {0:d}".format(i+1)
             raise RuntimeError(warningStr)
          if len(tPM.shape)!=2:
@@ -485,166 +486,156 @@ def edgeDetector(mask, clip=8):
                            mask,filter,mode='constant'))).ravel().nonzero()[0]
 
 if __name__=='__main__':
-   import matplotlib.pyplot as pg
-   import sys
+   #
+   # for future unittest compatibility, use assert statements in this test code
+   #
+   def test_geometry(ip,success,failure):
+      global thisGeom,thisGeom2x
+      (nAzi,gsHeight,mask)=ip
+      thisGeom=geometry(
+            numpy.array([0,1]),
+            numpy.array([1]*nAzi),
+            numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
+            gsHeight )
+      thisGeom.define()
+      assert thisGeom.createLayerMasks(), "thisGeom createLayerMasks failed"
+      success+=1
+      thisGeom2x=projection(
+            numpy.array([0,1]),
+            numpy.array([1]*nAzi),
+            numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
+            gsHeight,
+            pixelScales=2)
+      thisGeom2x.define()
+      assert thisGeom2x.createLayerMasks(), "thisGeom2x createLayerMasks failed"
+      success+=1
 
-   rad=10
-   #   \/ simplified geometry
-   nAzi=4
-   gsHeight=3
+      summedSfcLayerMasks=thisGeom.layerMasks[0][:-1].sum(axis=0)
+      summedSfcLayerMasks2x=thisGeom2x.layerMasks[0][:-1].sum(axis=0)
+      summedAltLayerMasks=thisGeom.layerMasks[1][:-1].sum(axis=0)
+      # test: are there the right number (and placement) of surface layer masks
+      assert ( summedSfcLayerMasks==(nAzi)*mask ).all(),\
+            "total of sfc layer masks is wrong"
+      success+=1
+      assert ( summedSfcLayerMasks.sum()==summedSfcLayerMasks2x.sum()*0.25 
+            ).all(), "scaling of sfc layer masks is wrong"
+      success+=1
+      # test: are there the right number (and scaling) of altitude layer masks
+      altScaling=(gsHeight-1)**2.0*gsHeight**-2.0
+      assert abs( summedAltLayerMasks.sum()-
+          summedSfcLayerMasks.sum()*altScaling )/summedSfcLayerMasks.sum()<1e-5\
+          , "total of upper layer masks is wrong"
+      success+=1
+      # test: are there the right placement of altitude layer masks
+      cds=[ numpy.arange(tn)-(tn-1.)/2. for tn in thisGeom.layerNpix[1] ]
+      cds[0]=cds[0].reshape([-1,1])
+      centreCoordinate=[
+            (thisGeom.layerMasks[1][-1]*tcds).sum()*mask.sum()**-1.
+               for tcds in cds ]
+      for i in range(nAzi):
+         c=numpy.array([
+               (thisGeom.layerMasks[1][i]*cds[j]).sum()\
+                     /(mask.sum()*altScaling)-
+               centreCoordinate[j] for j in (0,1) ])
+         ec=thisGeom.cornerCoordinates[1][i].mean(axis=0)
+         assert (abs(c-ec)<1e-2).all(),\
+               "placement of upper layer mask {0:d} is wrong".format(i)
+         success+=1
+      return success,failure
+   
+   def test_projection(ip,success,failure):
+      global thisProj,layerExM,sumPrM,sumLayerExM
+      (nAzi,gsHeight,mask)=ip
+      thisProj,layerExM,layerExUTM,sumPrM,sumLayerExM={},{},{},{},{}
+      for sparse in (1,0):
+         thisProj[sparse]=projection(
+               numpy.array([0,1]),
+               numpy.array([1]*nAzi),
+               numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
+               gsHeight,
+               sparse=sparse )
+         thisProj[sparse].define()
+         okay=thisProj[sparse].createLayerMasks()
+         if not okay:
+            raise ValueError("Eek!")
+         # try projection
+         print("{0:s}:Projection matrix calcs...".format(
+               "sparse" if sparse else "dense"), end="")
+         layerExUTM[sparse]=thisProj[sparse].layerExtractionMatrix(0)
+         layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
+         layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
+         sumPrM[sparse]=thisProj[sparse].sumProjectedMatrix()
+         sumLayerExM[sparse]=sumPrM[sparse].dot( layerExM[sparse] )
+         print("(done)")
 
+      # TEST: basic matrices comparison between sparse and dense
+      assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
+            "layerExM sparse!=dense"
+      success+=1
+      assert ( numpy.array( sumPrM[1].todense() )-sumPrM[0] ).var()==0,\
+            "sumPrM sparse!=dense"
+      success+=1
+      assert ( numpy.array( sumLayerExM[1].todense() )-sumLayerExM[0] 
+            ).var()==0, "sumLayerExM sparse!=dense"
+      success+=1
+      assert ( layerExUTM[0].take( thisProj[0].trimIdx(), axis=1 )-layerExM[0]
+            ).var()==0, "layerExM inbuilt trimming failed"
+      success+=1
+
+      # TEST: input means 
+      tilts=lambda s : numpy.add.outer(
+            numpy.arange(-s[0]/2,s[0]/2),
+            numpy.arange(-s[1]/2,s[1]/2) )
+      quadratic=lambda s : numpy.add.outer(
+            numpy.arange(-s[0]/2,s[0]/2)**2.0,
+            numpy.arange(-s[1]/2,s[1]/2)**2.0 )
+      ip=[ quadratic(tS) for tS in thisProj[0].layerNpix ]
+         # now, take each mask as projected and compute the sum of the mean
+         # of the projected tilt and this is our comparison
+      expectedIpMean=[
+            [ (ip[j]*thisProj[0].layerMasks[j][i]!=0).sum() 
+               for i in range(nAzi) ]
+                  for j in (0,1) ]
+      #           
+      ipV=(ip[0].ravel()).tolist()+(ip[1].ravel()).tolist()
+      ipExV=numpy.take( ipV, thisProj[0].trimIdx() )
+      ipProjV={0: numpy.dot( sumLayerExM[0], ipExV ),
+               1: numpy.array( sumLayerExM[1].dot( ipExV ))}
+      assert (ipProjV[0]-ipProjV[1]).var(), "ipProjV, sparse!=dense"
+      success+=1
+      liO=[0]+numpy.cumsum([
+            (thisProj[0].layerMasks[i][:].sum(axis=0)!=0).sum()
+            for i in (0,1) ]).tolist()
+      lmIdx=[ thisProj[0].maskInLayerIdx(
+            i,thisProj[0].layerMasks[i].sum(axis=0)) for i in (0,1) ]
+      print(ip[0].shape,ip[1].shape, lmIdx[1].min(),lmIdx[1].max())
+      maskDerivedMean=[ ip[i].ravel()[lmIdx[i]].sum() for i in (0,1) ]
+      print(sum(ipV[liO[0]:liO[1]]),sum(ipV[liO[1]:liO[2]]),
+         maskDerivedMean, expectedIpMean )
+      #
+      print(ipExV.shape,ipProjV[0].shape,mask.shape)
+      return success,failure
+
+   import datetime, sys
+   titleStr="projection.py, automated testing"
+   print("\n{0:s}\n{1:s}\n".format(titleStr,len(titleStr)*"^"))
+   print("BEGINS:"+str(datetime.datetime.now()))
+   #
+   rad=10 # note, array pixels
+   nAzi=5
+   gsHeight=3 # note, unitless
+   #
    circ = lambda b,r : (numpy.add.outer(
          (numpy.arange(b)-(b-1.0)/2.0)**2.0,
          (numpy.arange(b)-(b-1.0)/2.0)**2.0 )**0.5<=r).astype( numpy.int32 )
    mask=circ(rad,rad/2)-circ(rad,rad/2*0.25)
 
-   thisProj,layerExM,layerExUTM,sumPrM,sumLayerExM={},{},{},{},{}
-   for sparse in (1,0):
-      thisProj[sparse]=projection(
-            numpy.array([0,1]),
-            numpy.array([1]*nAzi),
-            numpy.arange(nAzi)*2*numpy.pi*(nAzi**-1.0), mask,
-            gsHeight,
-            sparse=sparse )
-      thisProj[sparse].define()
-      okay=thisProj[sparse].createLayerMasks()
-      if not okay:
-         raise ValueError("Eek!")
-      # try projection
-      print("{0:s}:Projection matrix calcs...".format(
-            "sparse" if sparse else "dense"), end="")
-      layerExUTM[sparse]=thisProj[sparse].layerExtractionMatrix(0)
-      layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
-      layerExM[sparse]=thisProj[sparse].layerExtractionMatrix(1)
-      sumPrM[sparse]=thisProj[sparse].sumProjectedMatrix()
-      sumLayerExM[sparse]=sumPrM[sparse].dot( layerExM[sparse] )
-      print("(done)")
-
-   assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
-         "layerExM sparse!=dense"
-   assert ( numpy.array( sumPrM[1].todense() )-sumPrM[0] ).var()==0,\
-         "sumPrM sparse!=dense"
-   assert ( numpy.array( sumLayerExM[1].todense() )-sumLayerExM[0] ).var()==0,\
-         "sumLayerExM sparse!=dense"
-   assert ( layerExUTM[0].take( thisProj[0].trimIdx(), axis=1 )-layerExM[0]
-            ).var()==0, "layerExM inbuilt trimming failed"
-
-   pg.figure()
-   pg.gray()
-   pg.subplot(2,2,1)
-   pg.title("layer masks")
-   pg.imshow( thisProj[0].layerMasks[0].sum(axis=0), interpolation='nearest' )
-   pg.subplot(2,2,2)
-   pg.imshow( thisProj[0].layerMasks[1].sum(axis=0), interpolation='nearest' )
-   pg.subplot(2,2,3)
-   pg.imshow( thisProj[0].layerMasks[0].sum(axis=0)>0, interpolation='nearest' )
-
-   # fix a mask for the upper layer
-   projectedMask=(thisProj[0].layerMasks[1].sum(axis=0)>0)*1.0
-   pg.subplot(2,2,4)
-   pg.imshow( projectedMask, interpolation='nearest' )
-
-   pg.draw()
-
-      # \/ random values as a substitute dataset
-   random=[ numpy.random.uniform(-1,1,size=tS) for tS in thisProj[0].layerNpix ]
-   print("Input creation...",end="")
-   randomA=[ numpy.ma.masked_array(random[i],
-         thisProj[0].layerMasks[i].sum(axis=0)==0) for i in (0,1) ]
-   randomV=(1*random[0].ravel()).tolist()+(1*random[1].ravel()).tolist()
-   randomExV=numpy.take( randomV, thisProj[0].trimIdx() )
-   randomProjV={0: numpy.dot( sumLayerExM[0], randomExV ),
-                1: numpy.array(sumLayerExM[1].dot( randomExV ))
-               }
-   assert (randomProjV[0]-randomProjV[1]).var(), "randomProjV, sparse!=dense"
-   print("(done)")
-   
-      # \/ create an imagable per-projection array of the random values
-   projectedRdmVA=numpy.ma.masked_array(
-      numpy.zeros([5]+list(mask.shape),numpy.float64),
-      (mask*numpy.ones([5,1,1]))==0, astype=numpy.float64)
-   projectedRdmVA.ravel()[
-      (thisProj[0].maskIdxs[-1]
-       +(numpy.arange(0,5)*mask.shape[0]*mask.shape[1]
-        ).reshape([-1,1])).ravel() ]=\
-            randomProjV[0]*numpy.ones(len(randomProjV[0]))
-
-   pg.figure()
-   for i in range(nAzi):
-      pg.subplot(3,2,i+1)
-      pg.imshow( projectedRdmVA[i,:,:], interpolation='nearest' )
-      pg.title("projection #{0:1d}".format(i+1))
-   pg.xlabel("layer values")
-   pg.draw()
-
-#(not useful)    # correlate to be sure
-#(not useful)    # do the first with the next four
-#(not useful)    print("XC...",end="")
-#(not useful)    nfft=128
-#(not useful)    fpRVA=numpy.fft.fft2(projectedRdmVA,s=[nfft,nfft])
-#(not useful)    fpRVA[:,0,0]=0
-#(not useful)    smilT2= lambda x :\
-#(not useful)       numpy.roll(numpy.roll( x,x.shape[-2]/2,axis=-2 ),x.shape[-1]/2,axis=-1)
-#(not useful)    xc=numpy.array([ numpy.fft.ifft2(fpRVA[0].conjugate()*fpRVA[i])
-#(not useful)       for i in range(0,5) ])
-#(not useful)    xc=numpy.array([ 
-#(not useful)       smilT2(txc)[nfft/2-mask.shape[0]/2:nfft/2+mask.shape[0]/2,
-#(not useful)           nfft/2-mask.shape[1]/2:nfft/2+mask.shape[1]/2] for txc in xc ])
-#(not useful)    pg.figure()
-#(not useful)    for i in range(nAzi-1):
-#(not useful)       pg.subplot(2,2,i+1)
-#(not useful)       pg.imshow( abs(xc[i+1]-xc[0])**2.0, interpolation='nearest' )
-#(not useful)       pg.title("xc (1,{0:1d})".format(i+1+1))
-#(not useful)    print("(done)")
-#(not useful)    pg.draw()
-
-   # now, try straight inversion onto the illuminated portions of the layers 
-   # with SVD (regularization disabled)
-   print("Inversion...",end="")
-##(disabled)   sTs=sumLayerExM[0].T.dot(sumLayerExM[0])
-##(disabled)   sTs_invR=numpy.linalg.inv( sTs + 0.1*numpy.identity(len(trimIdx)) )
-##(disabled)   print(".",end="");sys.stdout.flush()
-##(disabled)   sTs_invSVD=numpy.linalg.pinv( sTs )
-##(disabled)   print(".",end="");sys.stdout.flush()
-##(disabled)   recoveryM=[ numpy.dot( thissTsI, sumLayerExM.transpose() )
-##(disabled)      for thissTsI in (sTs_invR,sTs_invSVD) ]
-##(disabled)   recoveryM.append( numpy.linalg.pinv( sumLayerExM[0] ) ) # directly
-   recoveryM=( numpy.linalg.pinv( sumLayerExM[0] ) ) # directly
-   print("(done)")
-
-
-   print("Recon...",end="")
-   recoveredV=numpy.dot( recoveryM, randomProjV[0] )
-   recoveredLayersA=[[
-      numpy.ma.masked_array(numpy.zeros(thisProj[0].layerNpix[i], numpy.float64),
-         thisProj[0].layerMasks[i].sum(axis=0)==0) for i in (0,1)]
-            for j in range(len(recoveryM)) ]
-   layerInsertionIdx=thisProj[0].trimIdx(False)
-   print("(done)")
-
-   j=0
-   pg.figure()
-   for i in range(thisProj[0].nLayers):
-      recoveredLayersA[j][i].ravel()[layerInsertionIdx[i][1]]=\
-         recoveredV[layerInsertionIdx[i][0]:layerInsertionIdx[i+1][0]]
-      pg.title("layer 1, recon type="+str(j+1))
-      pg.subplot(2,3,1+i*3)
-      pg.imshow( recoveredLayersA[j][i]-recoveredLayersA[j][i].mean(),
-         interpolation='nearest',vmin=-1,vmax=1 )
-      pg.xlabel("recov'd")
-      pg.subplot(2,3,2+i*3)
-      pg.imshow( randomA[i]-randomA[i].mean(),
-         interpolation='nearest',vmin=-1,vmax=1 )
-      pg.xlabel("actual")
-      pg.subplot(2,3,3+i*3)
-      pg.imshow( recoveredLayersA[j][i]-randomA[i],
-         interpolation='nearest',vmin=-1,vmax=1 )
-      pg.xlabel("diff")
-      print(" Layer#{0:d}".format(i+1))
-      print("  Original RMS={0:5.3f}".format(randomA[i].var()))
-      print("  Difference RMS={0:5.3f}".format(
-         (randomA[i]-recoveredLayersA[j][i]).var()))
-
-   pg.waitforbuttonpress()
-
-
+   success,failure=test_geometry([nAzi,gsHeight,mask],0,0)
+   success,failure=test_projection([nAzi,gsHeight,mask],success,failure)
+   #
+   total=success+failure
+   succeeded,failed=success,failure
+   print("SUMMARY: {0:d}->{1:d} successes and {2:d} failures".format(
+         total, succeeded, failed))
+   print("ENDS:"+str(datetime.datetime.now()))
+   sys.exit( failed>0 )
