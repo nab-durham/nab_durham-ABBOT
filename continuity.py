@@ -462,7 +462,7 @@ if __name__=="__main__":
       return (success, failure)
    #
    titleStr="continuity.py, automated testing"
-   print("\n{0:s}\n{1:s}\n".format(titleStr,len(titleStr)*"^")
+   print("\n{0:s}\n{1:s}\n".format(titleStr,len(titleStr)*"^"))
    print("BEGINS:"+str(datetime.datetime.now()))
    success,failure=doFormalTest()
    succeeded,failed,total=0,0,0
