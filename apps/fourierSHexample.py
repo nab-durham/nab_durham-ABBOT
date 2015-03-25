@@ -1,14 +1,35 @@
 """ABBOT : useful functions to make realistic SH patterns.
 Note that the radial extension feature is not realistic for LGS
-spot extension since it doesn't act for incoherent sources.
+spot extension since it emulates the effect of a fully coherent source.
+That is, no attempt is made to average over realizations of the reduction
+in spatial coherence so it is entirely possible to obtain a restoration of the
+spatial coherence (a removal of the elongation) with an input aberration.
 """
 
 from __future__ import print_function
 import numpy
 import sys
 
+def _plotFractionalBar(frac,char='#',length=70,
+      printFraction=False,
+      printPercentage=True,
+      spinner=False
+   ):
+   print(
+      "[ "+
+      char*int(frac*length)+
+      "-"*(length-int(frac*length))+
+      " ]"+
+      ("" if not printPercentage else " {0:3d}%\r".format(int(frac*100))
+         )+
+      ("" if not printFraction else " {0:6.3f}\r".format(frac)
+         )+
+      ("" if not spinner else spinner)
+      , end="" )
+   sys.stdout.flush()
+
 def cds(N, roll=False):
-   tcds = (numpy.arange(0,N)-(N/2.))*(N/2.0)**-1.0
+   tcds = (numpy.arange(0,N)-(N/2.-0.5))*(N/2.0)**-1.0
    return tcds if not roll else numpy.fft.fftshift(tcds)
 
 def circle(N,fractionalRadius=1):
@@ -177,14 +198,14 @@ def getSlopes(shimgs,cntr,maskI,refslopes=0,slopeScaling=1):
    slopesV=numpy.ma.masked_array(slopesV,numpy.isnan(slopesV))
    return (slopesV-refslopes)*slopeScaling
 
-def calibrateSHmodel( pupilAp, cntr, nPix, N, mag, maskI, defWls, binning,
-      LT, GP, radialExtension ):
+def calibrateSHmodel( pupilAp, cntr, nPix, N, mag, maskI, defWls=[0,],
+      binning=1, LT=1, GP=0, radialExtension=0 ):
    """Calibrate the SH model by adding artificial tilts that move the spots
       by 1/4 and 1/2 of the sub-aperture width in both directions
       simultaneously.
    """
    global refimgs,tilt1ximgs,tilt2ximgs,tilt1xslopes,tilt2xslopes
-   print("CALIBRATION:\n\t",end="")
+   print("CALIBRATION:\n\t[[",end="")
    sapxls=nPix//N
    #
    tiltFac=0.5*nPix*(sapxls*mag)**-1.0 # move 1/4 sub-aperture
@@ -216,7 +237,8 @@ def calibrateSHmodel( pupilAp, cntr, nPix, N, mag, maskI, defWls, binning,
    assert refslopes.mask.var()==0, "Some refslopes are invalid!"
    print("Image intensities:")
    for i,s in (refimgs,"ref"),(tilt1ximgs,"tilt_1x"),(tilt2ximgs,"tilt_2x"):
-      print("\t{0:s}{1:s} = {2:d}".format(" "*(15-len(s)), s, int(i.sum()) ))
+      print("\tarray_sum({0:s}{1:s}) = {2:d}".format(
+            " "*(25-len(s)), s, int(i.sum()) ))
    #
    # get unscaled tilt slopes
    tilt1xslopes=getSlopes(tilt1ximgs,cntr,maskI,refslopes)
@@ -233,9 +255,9 @@ def calibrateSHmodel( pupilAp, cntr, nPix, N, mag, maskI, defWls, binning,
    if tilt2xslopes.mask.var()!=0: "WARNING: Some tilt1xslopes are invalid!"
    # now generate slope scaling
    slopeScaling=0.5*(1/(1e-15+tilt1xslopes)+2/(1e-15+tilt2xslopes))
-   print("slopeScaling",end="")
+   print("\tslopeScaling",end="")
    #
-   print()
+   print("]]")
    return ( slopeScaling, reconScalingFactor, tiltFac, refslopes)
 
 
