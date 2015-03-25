@@ -60,6 +60,8 @@ class loops( gradientOperator.geometryType1 ):
       gradientOperator.geometryType1.__init__( self, subapMask, pupilMask )
       #
       self.partitionPeriod=partitionPeriod
+      if type(self.partitionPeriod) in (int,float):
+         self.partitionPeriod=[self.partitionPeriod]*2
       self.partitionPeriodOffset=partitionPeriodOffset
       self.rotated=rotated
       self.loopsDef=[]
@@ -216,6 +218,22 @@ class loopsIntegrationMatrix( loops ):
       return self.loopIntM
 
 class loopsNoiseMatrices( loopsIntegrationMatrix ):
+   def __init__( self, subapMask=None, pupilMask=None, partitionPeriod=None, 
+         partitionPeriodOffset=[0,0], rotated=False, loopTemplates=[1,2,-1,-2],
+         sparse=False, verbose=False, reorderSlopes=False,
+         regularization=None
+      ):
+      ''' reorderSlopes [False] : If False then assume slopes are (XXXX...YYYY)
+         else slopes are (XYXY...XYXY) ordering. The latter produces a
+         block-structured matrix.
+      '''
+      loopsIntegrationMatrix.__init__(
+            self, subapMask, pupilMask, partitionPeriod, 
+            partitionPeriodOffset, rotated, loopTemplates,
+            sparse, verbose, reorderSlopes
+         )
+      self.regularization=regularization
+
    def returnOp( self ):
       if 'noiseExtM' in dir(self) and 'noiseReductionM' in dir(self):
          # has already been calculated
@@ -225,62 +243,60 @@ class loopsNoiseMatrices( loopsIntegrationMatrix ):
          loopsIntegrationMatrix.returnOp(self) 
       if not self.sparse:
          # define the inverse
+         if type(self.regularization) in (int,float,types.NoneType):
+            self.regularizationM=numpy.identity(
+                  self.numberSubaps*2 )*(
+                  0.1 if self.regularization==None else self.regularization )
+         elif isinstance(self.regularization,numpy.ndarray):
+            assert self.regularization.shape==\
+                     ( self.numberSubaps*2, self.numberSubaps*2 ),\
+                  "Incorrectly sized regularization"
+            self.regularizationM=self.regularization
+         else:
+            raise TypeError(
+                  "Except regularization to be int,float,ndarray,None")
          ilIM=numpy.dot(
             numpy.linalg.inv(
-                  numpy.dot(self.loopIntM.T, self.loopIntM)
-                  +numpy.identity(self.loopIntM.shape[1])*0.1
-               ), self.loopIntM.T )
-         identM=numpy.identity(self.numberSubaps*2)
+                     numpy.dot(self.loopIntM.T, self.loopIntM)
+                     +self.regularizationM
+                  ), self.loopIntM.T 
+               )
+         identM=numpy.identity( self.numberSubaps*2 )
       else:
+         # define the inverse
          import scipy.sparse, scipy.sparse.linalg
-         #luliTliMsplu=scipy.sparse.linalg.splu(
-               #self.loopIntM.T.dot(self.loopIntM)+
-               #0.1*scipy.sparse.csr_matrix(
-                  #(numpy.ones(self.loopIntM.shape[1]),
-                   #numpy.arange(self.loopIntM.shape[1]),
-                   #numpy.arange(self.loopIntM.shape[1]+1)
-                  #)) )
-         #
-         #inv_liTliMT_list=[
-         #   luliTliM.solve(numpy.arange(self.loopIntM.shape[1])==jj)
-         #      for jj in range(self.loopIntM.shape[1]) ]
+         if type(self.regularization) in (int,float,types.NoneType):
+            self.regularizationM=scipy.sparse.identity(
+                  self.numberSubaps*2 )*(
+                  0.1 if self.regularization==None else self.regularization )
+         elif isinstance(self.regularization,scipy.sparse,spmatrix):
+            assert self.regularization.shape==\
+                     ( self.numberSubaps*2, self.numberSubaps*2 ),\
+                  "Incorrectly sized regularization"
+            self.regularizationM=self.regularization
+         else:
+            raise TypeError(
+                  "Except regularization to be int,float,ndarray,None")
          #
          ilTlvc, ilTlic, ilTll = [], [], [0]
          luliTliMsplu = scipy.sparse.linalg.splu(
-               self.loopIntM.T.dot(self.loopIntM)+
-               0.1*scipy.sparse.identity(self.loopIntM.shape[1]) )
-##         for i,inv_liTliMT_col in enumerate(inv_liTliMT_list):
-         for jj in range(self.loopIntM.shape[1]):
+               self.loopIntM.T.dot(self.loopIntM)+self.regularizationM )
+         for jj in range( self.loopIntM.shape[1] ):
             this_liTliM_col=luliTliMsplu.solve(
-                  numpy.arange(self.loopIntM.shape[1])==jj)
+                  numpy.arange( self.loopIntM.shape[1] )==jj )
             ilTli = this_liTliM_col.nonzero()[0]
             #
             ilTlic+=ilTli.tolist()
             ilTll.append( ilTll[-1]+len( ilTli ) )
             ilTlvc+=( this_liTliM_col.take( ilTli ) ).tolist()
-            #ilTli=[ numpy.flatnonzero(inv_liTliMT_col.nonzero())
-                     #for inv_liTliMT_col in inv_liTliMT_list ]
-            #ilTll=numpy.cumsum( [0]+[ len(idx) for idx in ilTli ] )
-            #ilTlv=[ inv_liTliMT_col.take(ilTli[i])
-                  #for i,inv_liTliMT_col in enumerate(inv_liTliMT_list) ]
-            ##
-            #ilTlvc=[]
-            #ilTlic=[]
-            #for x in ilTli: ilTlic+=x.tolist()
-            #for x in ilTlv: ilTlvc+=x.tolist()
          #
          ilIM=scipy.sparse.csr_matrix( (ilTlvc,ilTlic,ilTll),
                dtype=numpy.float32).dot(self.loopIntM.T)
-##         ilIM=ilIM.dot(self.loopIntM.T)
-         identM=scipy.sparse.identity(self.numberSubaps*2)
+         identM=scipy.sparse.identity( self.numberSubaps*2 )
+      #
       self.noiseExtM=ilIM.dot(self.loopIntM) # matrix to return the noises, n2
       self.noiseReductionM=identM-self.noiseExtM # and to remove noise->(s+n1)
-##(old)         a=scipy.sparse.csr_matrix(
-##(old)                  (numpy.ones(self.numberSubaps*2),
-##(old)                   numpy.arange(self.numberSubaps*2),
-##(old)                   numpy.arange(self.numberSubaps*2+1)
-##(old)                  ))
-##(old)         self.noiseReductionM=a-self.noiseExtM 
+      #
       return self.noiseExtM, self.noiseReductionM
 
 ## #######################################################################
