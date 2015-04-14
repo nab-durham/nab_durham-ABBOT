@@ -25,9 +25,14 @@ gM=gO.returnOp()
 # define phase at corners of pixels, each of which is a sub-aperture
 timings['s:phaseC']=time.time()
 import phaseCovariance as pc
-cov=pc.covarianceMatrixFillInRegular(
-   pc.covarianceDirectRegular(nfft+2,r0,L0) )
-choleskyC=pc.choleskyDecomp(cov)
+covPlus=pc.covarianceMatrixFillInRegular(
+      pc.covarianceDirectRegular(nfft+2,r0,L0)
+   )
+cov=pc.covarianceMatrixFillInMasked(
+      pc.covarianceDirectRegular(nfft+1,r0,L0),
+      gO.illuminatedCorners 
+   )
+choleskyC=pc.choleskyDecomp(covPlus)
 timings['e:phaseC']=time.time()
 
 # generate phase and gradients
@@ -76,10 +81,20 @@ timings['s:eigV']=time.time()
 eigV=numpy.linalg.eigvals(gTgM) ; eigV.sort()
 timings['e:eigV']=time.time()
 alpha=eigV[-1]*1e-3 # quash about 2nd smallest eigenvalue
-beta=alpha**2.0
+##beta=alpha**2.0
+##beta=( onePhaseV.var()*(lM.dot(onePhaseV).var())**-1.0 )
+##beta = cov.diagonal().mean()/( onePhaseV.T.dot(lM.T.dot(lM.dot(onePhaseV))) )
+beta = onePhase.var()/( onePhaseV.T.dot(lM.T.dot(lM.dot(onePhaseV))) )
+gamma = onePhase.var()/( cov.diagonal().mean() )
+#
+alpha,beta=0
+assert sum([x==0 for x in alpha,beta,gamma]),\
+    "Can only choose one of alpha, beta, or gamma"
 invgTgTikM=numpy.linalg.inv(
    gTgM + alpha*numpy.identity(gO.numberPhases)
-       + beta*numpy.dot(lM.transpose(),lM) )
+       + beta*numpy.dot(lM.transpose(),lM)
+       + gamma*cov
+   )
 
 try:
    # \/ SVD reconstruction
@@ -92,14 +107,14 @@ except numpy.linalg.LinAlgError as exceptionErr:
 # three reconstructor matrices
 reconM=[]
 for thisInvM in (invgTgTikM, invgTgM, invgTgSVDM):
-   if thisInvM!=None:
+   if type(thisInvM)!=type(None):
       reconM.append( numpy.dot( thisInvM, gM.transpose() ) )
    else: 
       reconM.append( None )
       
 reconPhaseV=[]
 for thisRM in reconM:
-   if thisRM!=None:
+   if type(thisRM)!=type(None):
       reconPhaseV.append( numpy.dot( thisRM, gradV ) )
    else:      
       reconPhaseV.append(None)
@@ -107,7 +122,7 @@ for thisRM in reconM:
 # imaging of phases
 reconPhaseD=[] 
 for i in range(3):
-   if reconM[i]==None: 
+   if type(reconM[i])==type(None): 
       reconPhaseD.append(None)
    else:
       thisPhaseD=numpy.zeros((nfft+1)**2,numpy.float64)
@@ -132,7 +147,7 @@ pg.imshow( reconPhaseD[0]-onePhaseD, interpolation='nearest', origin='lower',
 pg.title("diff (Tik.)")
 pg.colorbar()
 pg.subplot(235)
-if reconM[1]!=None:
+if type(reconM[1])!=type(None):
    pg.imshow( reconPhaseD[1]-onePhaseD, interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
    pg.title("diff (No reg.)")
@@ -140,7 +155,7 @@ if reconM[1]!=None:
 else:
    pg.text(0.1,0.1,"Inv failed")
 pg.subplot(236)
-if reconM[2]!=None:
+if type(reconM[2])!=type(None):
    pg.imshow( reconPhaseD[2]-onePhaseD, interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
    pg.title("diff (SVD)")
@@ -151,9 +166,9 @@ else:
 # remnant variances
 print("input var=",onePhaseD.var())
 print("input-recon (Tik.) var=\t",(reconPhaseD[0]-onePhaseD).var())
-if reconM[1]!=None:
+if type(reconM[1])!=type(None):
    print("input-recon (No reg.) var=\t",(reconPhaseD[1]-onePhaseD).var())
-if reconM[2]!=None:
+if type(reconM[2])!=type(None):
    print("input-recon (SVD) var=\t",(reconPhaseD[2]-onePhaseD).var())
 
 # waffle operator
@@ -161,9 +176,9 @@ waffleO=gradientOperator.waffleOperatorType1(pupilMask)
 waffleV=waffleO.returnOp()
 print("waffle input amp=\t",numpy.dot(onePhaseV, waffleV))
 print("waffle recon (Tik.) amp=\t",numpy.dot(reconPhaseV[0], waffleV))
-if reconM[1]!=None:
+if type(reconM[1])!=type(None):
    print("waffle recon (No reg.) amp=\t",numpy.dot(reconPhaseV[1], waffleV))
-if reconM[2]!=None:
+if type(reconM[2])!=type(None):
    print("waffle recon (SVD) amp=\t",numpy.dot(reconPhaseV[2], waffleV))
 
 for dat in (
