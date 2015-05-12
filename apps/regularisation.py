@@ -4,47 +4,42 @@ reconstruction (inversion with least squares, minimum variance, SVD)
 and with variable regularization.
 '''
 from __future__ import print_function
-import commonSeed 
+##import commonSeed 
 import gradientOperator
-import matplotlib.pyplot as pg
 import numpy
 import sys
 import time
 
 
 ## variables begin -----------------------------------------
+## configurable variables begin-----------------------------
 
 # test code
-r0=1 # in pixels
-L0=2
-nfft=24 # pixel size
-noise=2e-0 # fraction of signal which is noise
+r0=0.3333 # in pixels
+L0=1.0
+nfft=12 # pixel size
+noise=0.1# fraction of signal which is noise
 #
 rcond=1e-6 # for SVD, relative to *largest* eigenvalue of G^T.G
 # alpha!=0 with Tikhonov regularisation
 # beta!=0 with Biharmonic approximation to MAP/waffle regularisation
 # gamma!=0 with full inverse covariance regularisation
 alpha=1e-6
-beta=0.25
-gamma,gammaN = beta,(noise**2)**-1.0
+beta=noise**2*0.25*4/7.0*(7/1.0e2)
+if beta<1e-6: beta=1e-6
+gamma,gammaN = 0.25,(noise**2)**-1.0
 
+## configurable variables end ------------------------------
+timings={}
+obscuration=(0.5,1/4.0) # outer diameter and inner diameter
 ## variables end -------------------------------------------
 
-print("r0=",r0)
-print("L0=",L0)
-print("nfft=",nfft)
-print("noise=",noise)
-print("rcond=",rcond)
-print("alpha,beta,gamma=",alpha,beta,gamma)
-print("gammaN=",gammaN)
-
-timings={}
 
 def printOutputVariances():
    # remnant variances & waffle operator
    opValPairs=[
          ("input var=",
-            onePhaseD.var()),
+            onePhaseV.var()),
          ("waffle input amp=",
             numpy.dot(onePhaseV, waffleV)),
       ]
@@ -56,61 +51,68 @@ def printOutputVariances():
                numpy.dot(reconPhaseV[key], waffleV))
       ]
    #
+   print(" "+"-"*40)
+   title="Output variances"
+   print(" +"+title+"-"*(40-len(title)))
    for opName,val in opValPairs:
-      print(" "*(max([40-len(opName),0]))
-            + opName + "{0:6.3g}".format(val))
+      print(" "*(max([40-len(opName),0])) + opName + "{0:6.3g}".format(val))
+   #   
+   print(" "+"-"*40)
 
 def printTimings():
+   title="Timings (in seconds)"
+   print(" +"+title+"="*(40-len(title)))
    for dat in (
          ("Phase covariance","phaseC"),
          ("Covariance regularization","phaseCReg"),
          ("Eig Values time","eigV"),
          ("gTgM","gtgM"),("Laplacian/Biharmonic","lOM"),
         ):
-      print("{1}={0:5.3f}s".format(
-         timings['e:'+dat[1]]-timings['s:'+dat[1]],dat[0]))
+      if 's:'+dat[1] not in timings.keys() or 'e:'+dat[1] not in timings.keys():
+         print("(WARNING: timing key '{0:s}' not found)".format(dat[1]))
+      else:
+         opName=dat[1]+":= "
+         val=timings['e:'+dat[1]]-timings['s:'+dat[1]]
+         #
+         print(" "*(max([40-len(opName),0])) + opName + "{0:6.3g}s".format(val))
+   #
+   print(" "+"="*40)
 
 def doPlots():
+   import matplotlib.pyplot as pg
    pg.figure(2)
-   pg.subplot(221)
+   pg.subplot(231)
    pg.imshow( onePhaseD, interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
-   pg.title("type 1: input phase")
+   pg.title("t.1 i/p")
    pg.colorbar()
-   pg.subplot(222)
-   pg.imshow( reconPhaseD[0], interpolation='nearest', origin='lower',
+   pg.subplot(232)
+   pg.imshow( reconPhaseD['gamma'], interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
-   pg.title("reconstructed phase ({0:s})".format(typeOfRegularization))
+   pg.title("recon.\nphase ({0:s})".format('gamma'),size=10)
    pg.colorbar()
-   pg.subplot(234)
-   pg.imshow( reconPhaseD[0]-onePhaseD, interpolation='nearest', origin='lower',
+   pg.subplot(233)
+   pg.imshow( reconPhaseD['svd'], interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
-   pg.title("diff ({0:s})".format(typeOfRegularization))
+   pg.title("recon. phase\n({0:s})".format('svd'),size=10)
    pg.colorbar()
-   pg.subplot(235)
-   if type(reconM[1])!=type(None):
-      pg.imshow( reconPhaseD[1]-onePhaseD, interpolation='nearest', origin='lower',
-         extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
-      pg.title("diff (No reg.)")
-      pg.colorbar()
-   else:
-      pg.text(0.1,0.1,"Inv failed")
-   pg.subplot(236)
-   if type(reconM[2])!=type(None):
-      pg.imshow( reconPhaseD[2]-onePhaseD, interpolation='nearest', origin='lower',
-         extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
-      pg.title("diff (SVD)")
-      pg.colorbar()
-   else:
-      pg.text(0.1,0.1,"SVD failed")
+   for i,key in enumerate( ['alpha','beta2','gamma','svd'] ):
+      pg.subplot(245+i)
+      if not reconPhaseD[key] is None:
+         pg.imshow( reconPhaseD[key]-onePhaseD,
+            interpolation='nearest', origin='lower',
+            extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
+         pg.title("diff ({0:s})".format(key),size=8)
+         pg.colorbar()
+      else:
+         pg.text(0.1,0.1,key+" failed")
 
-def setup():
-   # define pupil mask as sub-apertures
-   pupilMask=numpy.ones([nfft]*2,numpy.int32)
+def setupGeometry(nfft,obscuration=[0.5,0]):
+   pupilMask=numpy.ones([nfft]*2,numpy.int32)# pupil mask:=sub-apertures
    pupilCds=numpy.add.outer(
       (numpy.arange(nfft)-(nfft-1)/2.)**2.0,
-      (numpy.arange(nfft)-(nfft-1)/2.)**2.0 )
-   pupilMask=(pupilCds>(nfft/6)**2)*(pupilCds<(nfft/2)**2)
+      (numpy.arange(nfft)-(nfft-1)/2.)**2.0 )**0.5*nfft**-1.0
+   pupilMask=(pupilCds>obscuration[1])*(pupilCds<obscuration[0])
    gO=gradientOperator.gradientOperatorType1(pupilMask)
    gM=gO.returnOp()
    timings['s:gtgM']=time.time()
@@ -124,7 +126,7 @@ def setup():
    #
    return pupilMask,gO,gM,gTgM,waffleV,lO,lM
 
-def setupPhase():
+def setupPhase(r0,L0):
    # define phase at corners of pixels, each of which is a sub-aperture
    timings['s:phaseC']=time.time()
    import phaseCovariance as pc
@@ -164,20 +166,6 @@ def setupPhase():
    #
    return( covPlus, cov_I, onePhase, onePhaseV, onePhaseD )
 
-#################################################################
-## logic begins
-##
-
-( pupilMask,gO,gM,gTgM,waffleV,lO,lM )=setup()
-( covPlus, cov_I, onePhase, onePhaseV, onePhaseD )=setupPhase()
-
-
-gradV=numpy.dot(gM,onePhaseV)
-if 'noise' in dir():
-   gradV+=numpy.random.normal(0,gradV.var()**0.5*noise,size=gO.numberSubaps*2)
-   print("(Adding noise)")
-lTlM_scaled=lM.T.dot(lM)/4.0
-
 def doInversion(alpha,beta,gamma,gammaN):
    # now build control matrix,
    # linear least squares is (G^T G+alpha I+beta R+gamma C^-1)^-1 G^T
@@ -204,52 +192,177 @@ def doSVD(rcond):
       invgTgSVDM=None
    return invgTgSVDM
 
-   # \/ no regularisation 
+def doVariableNoise(noises, ipV):
+   """noises is a iterable containing fractions of noise for the analysis
+   """
+   title="VARIABLE NOISE ANALYSIS"
+   print(" "+title+int(0.5*(60-len(title)))*"-="+"\n")
+   #
+   invgTgMs={
+         'alpha':doInversion(alpha,0,0,1),
+         'beta': doInversion(0,beta,0,1),
+         'svd':  doSVD(rcond)
+      }
+   opReconDiff,opReconDiffVars={},{}
+   #
+   for noise in noises:
+      print("(noise:="+str(noise),end="") ; sys.stdout.flush()
+      gammaN = 1.0 if noise==0 else (noise**2)**-1.0
+      #
+      # add next two reconstructors,
+      #  . Covariance approximation, min var 
+      #  . Minimum variance
+      invgTgMs['beta2']=doInversion(0,beta,0,gammaN)
+      invgTgMs['gamma']=doInversion(0,0,gamma,gammaN) 
+      #
+      gradV=numpy.dot(gM,ipV)
+      if noise>0:
+         gradV+=numpy.random.normal(0,gradV.var()**0.5*noise,
+               size=gO.numberSubaps*2)
+      print(".",end="") ; sys.stdout.flush()
+      #
+      for key in invgTgMs.keys():
+         reconM = numpy.dot( invgTgMs[key], gM.transpose() ) 
+         if key in ('beta2','gamma'): reconM*=gammaN
+         print("+",end="") ; sys.stdout.flush()
+         #
+         if key not in opReconDiff: opReconDiff[key]=[]
+         if key not in opReconDiffVars: opReconDiffVars[key]=[]
+         opReconDiff[key].append( numpy.dot(reconM, gradV)-ipV)
+         opReconDiffVars[key].append( 
+               (numpy.dot(reconM, gradV)-ipV).var() )
+      
+      print(".)",end="") ; sys.stdout.flush()
 
-#(old)   # \/ Tikhonov reconstruction
-#(old)timings['s:eigV']=time.time()
-#(old)eigV=numpy.linalg.eigvals(gTgM) ; eigV.sort()
-#(old)timings['e:eigV']=time.time()
-#(old)assert sum([x==0 for x in alpha,beta,gamma])==2,\
-#(old)    "Can only choose one of alpha, beta, or gamma"
-#(old)typeOfRegularization="Tikhonov"*(alpha!=0)+\
-#(old)      "Sparse C_phi^{-1} approx."*(beta!=0)+\
-#(old)      "Dense C_phi^{-1}"*(gamma!=0)
+   #
+   reconKeys=[]
+   for i,key in enumerate(invgTgMs): reconKeys.append((i,key))
+   #
+   opReconDiffs=numpy.empty( [len(reconKeys),len(noises)], numpy.float64 )
+   for i,key in reconKeys:
+      opReconDiffs[i]=numpy.array(opReconDiffVars[key]).T
+   #
+   return (noises,reconKeys,opReconDiffs,opReconDiff)
 
+
+def doVariableNoiseComparison():
+   deltaNoise=0.1
+   nReps=10
+   noises=[]
+   for thisNoise in numpy.linspace(0,2,(2/deltaNoise)+1):
+      noises+=[thisNoise]*nReps
+   rKs,rDsK = doVariableNoise( noises, onePhaseV )[1:3]
+   rDsR = doVariableNoise( noises,
+         numpy.random.normal(0,onePhaseV.var()**0.5,onePhaseV.shape[0]) )[2]
+   rDsK/=onePhaseV.var()
+   rDsR/=onePhaseV.var()
+   rDsK={
+         'm':rDsK.reshape([ -1,(2/deltaNoise)+1, nReps ]).mean(axis=-1),
+         'v':rDsK.reshape([ -1,(2/deltaNoise)+1, nReps ]).var(axis=-1),
+      }
+   rDsR={
+         'm':rDsR.reshape([ -1,(2/deltaNoise)+1, nReps ]).mean(axis=-1),
+         'v':rDsR.reshape([ -1,(2/deltaNoise)+1, nReps ]).var(axis=-1),
+      }
+   import pylab
+   pylab.figure(1)
+   pylab.subplot(2,2,1)
+   pylab.imshow( rDsK['m'], vmin=0, vmax=1.0,
+         extent=[-deltaNoise/2.,max(noises)+deltaNoise/2.,-0.5,len(rKs)-0.5] )
+   pylab.subplot(2,2,2)
+   pylab.imshow( rDsR['m'], vmin=0, vmax=1.0,
+         extent=[-deltaNoise/2.,max(noises)+deltaNoise/2.,-0.5,len(rKs)-0.5] )
+   pylab.subplot(2,1,2)
+   cols=['b','g','r','m','k','c']
+   for i,k in rKs:
+      pylab.errorbar( noises[::nReps], rDsK['m'][i], yerr=rDsK['v'][i]**0.5,
+            label=k, linestyle='-', color=cols[i] )
+      pylab.errorbar( noises[::nReps], rDsR['m'][i], yerr=rDsR['v'][i]**0.5,
+            linestyle='--', color=cols[i] )
+
+   pylab.legend(loc=0)
+
+
+####################################
+## Main code logic begins now
+##
+##
+
+title="Output variables"
+opVarNames=('r0','L0','nfft','noise','rcond','alpha','beta','gamma','gammaN')
+opValPairs=[]
+for opVarName in opVarNames:
+   if opVarName not in dir():
+      opValPairs.append((opVarName,"*NOT FOUND*"))
+   else:
+      opValPairs.append( (opVarName+" = ",str( eval(opVarName) )) )
+
+print(" +"+title+"+"*(40-len(title)))
+for opName,val in opValPairs:
+   print(" "*(max([40-len(opName),0])) + opName + "{0:s}".format(val))
+#
+print(" "+"+"*40)
+
+print("[Setup]",end="") ; sys.stdout.flush()
+( pupilMask,gO,gM,gTgM,waffleV,lO,lM )=setupGeometry(nfft,obscuration)
+( covPlus, cov_I, onePhase, onePhaseV, onePhaseD )=setupPhase(r0,L0)
+### onePhaseV=numpy.random.normal(0,onePhaseV.var()**0.5,len(onePhaseV))
+onePhaseV = numpy.where(
+      numpy.random.uniform(-1,1,size=gO.numberPhases)>0, 1, -1 )
+onePhaseD.ravel()[gO.illuminatedCornersIdx]=onePhaseV
+
+print("[Input]",end="") ; sys.stdout.flush()
+gradV=numpy.dot(gM,onePhaseV)
+if 'noise' in dir():
+   gradV+=numpy.random.normal(0,gradV.var()**0.5*noise,size=gO.numberSubaps*2)
+   print("(Adding noise)",end="")
+
+print("[Reconstructors]",end="") ; sys.stdout.flush()
 invgTgMs={
       'alpha':doInversion(alpha,0,0,1), # Tikhonov
       'beta': doInversion(0,beta,0,1), # Covariance approximation, least squares
+      'beta2': doInversion(0,beta,0,gammaN), # Covariance approximation, min var 
       'gamma':doInversion(0,0,gamma,gammaN), # Minimum variance
       'svd':  doSVD(rcond)
    }
 
-print("Reconstructor::",end="") ; sys.stdout.flush()
-# three reconstructor matrices
+print("Reconstruction::",end="") ; sys.stdout.flush()
 reconM,reconPhaseV,reconPhaseD={},{},{}
-for invType in 'alpha','beta','gamma','svd':
+for invType in invgTgMs.keys():
    print("<{0:s}:".format(invType),end="") ; sys.stdout.flush()
    if not invgTgMs[invType] is None:
       print("MVM:".format(invType),end="") ; sys.stdout.flush()
       reconM[invType] = numpy.dot( invgTgMs[invType], gM.transpose() ) 
-      if invType=='gamma' and gamma!=0: reconM[invType]*=gammaN
+      if invType in ('beta2','gamma'): reconM[invType]*=gammaN
       #
       print("recon:".format(invType),end="") ; sys.stdout.flush()
       reconPhaseV[invType] = numpy.dot(reconM[invType], gradV)
       #
+      print("reimage>".format(invType),end="") ; sys.stdout.flush()
       thisPhaseD=numpy.zeros((nfft+1)**2,numpy.float64)
       thisPhaseD[gO.illuminatedCornersIdx]=reconPhaseV[invType]
-      print("reimage>".format(invType),end="") ; sys.stdout.flush()
       reconPhaseD[invType] = numpy.ma.masked_array(
             thisPhaseD.reshape([nfft+1]*2), [gO.illuminatedCorners==0] )
    else: 
       print("*N/A*>".format(invType),end="") ; sys.stdout.flush()
-      reconM[invType] = None
-      #
-      reconPhaseV[invType] = None
-      #
-      reconPhaseD = None
+      reconM[invType],reconPhaseV[invType],reconPhaseD = [None]*3
 
 print()
+
+title="STREHLS"
+print(" +"+title+"+"*(40-len(title)))
+opValPairs=[]
+for k in invgTgMs.keys():
+   opValPairs.append(( k+" -> ","{0:04.1f}%".format(
+         abs( numpy.exp(1.0j*(onePhaseD-reconPhaseD[k])).sum()
+            )**2.*len(onePhaseV)**-2.0*100
+            )
+         ))
+for opName,val in opValPairs:
+   print(" "*(max([40-len(opName),0])) + opName + "{0:s}".format(val))
+
 printOutputVariances()
 printTimings()
 print("For plots, use subroutine doPlots()")
+print("For analysis of variable noise, use subroutine  "+
+         "doVariableNoiseComparison()")
