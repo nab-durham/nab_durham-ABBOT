@@ -47,7 +47,10 @@ class dm(object):
 
    def coords(self):
       self.actCds=[]
-      if type(self.mask)!=type(None): self.usable=[]
+      if type(self.mask)!=type(None):
+         self.usable=[]
+      else:
+         self.usable=numpy.ones(self.nacts)
 #      offset=[ (
 #            self.actGeom[i]+(self.within!=0)-1)/2. for i in (0,1)]
       self.actspacing=[ self.lateralScl[i]*self.npix[i]/float(
