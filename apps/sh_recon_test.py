@@ -5,15 +5,13 @@ from __future__ import print_function
 import numpy as np
 np.random.seed(18071977)
 
-N=12
-subApS=8
-fftScl=4
-dmSize=[(N+1)*subApS]*2 # can be None
-dmRot=0
-dmSpacing=[N+1]*2
-#dmSize[0]-=8
-#dmSize[1]+=4
-#dmRot=5
+N=15 # the number of sub-apertures
+subApS=8 # the pixels per sub-aperture
+   # /\ N*subAps is the span of the WFS 
+fftScl=1 # the sub-aperture zoom
+dmSize=[14*8]*2 # can be None, the physical size to span
+dmRot=0 # rotation angle of the DM
+dmSpacing=[14]*2 # the size of the DM, NxN
 
 # ---
 
@@ -201,7 +199,7 @@ reconM=np.dot(
    np.linalg.inv( np.dot( gM.T, gM )+1e-3*np.identity(gO.numberPhases) ), gM.T )
 
 if dmSize!=None:
-   dm=abbot.dm.dm(dmSize,dmSpacing,dmRot,within=0,ifScl=2**-0.5)
+   dm=abbot.dm.dm(dmSize,dmSpacing,None,dmRot,within=0,ifScl=2**-0.5)
 else:
    dm=None
 
@@ -264,13 +262,19 @@ if type(pokeM)!=type(None):
 chainsDef,chainsDefChStrts,offsetEstM,wM=prepCure(gO)
 
 print("{cure}",end="") ; sys.stdout.flush()
-comp,cureWfV,chainsV,chains=doCure(
-      gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,wM*0)
-print("{done}") ; sys.stdout.flush()
+canCure=True
+try:
+   comp,cureWfV,chainsV,chains=doCure(
+         gradsV,chainsDef,gO,offsetEstM,chainsDefChStrts,wM*0)
+except:
+   canCure=False
+   print("Cannot compute non-matrix solution")
+else:
+   print("{done}") ; sys.stdout.flush()
+   doPlottingComparisonCure(cureWfV,gO)
 
-doPlottingComparisonCure(cureWfV,gO)
 
-if type(pokeM)!=type(None):
+if type(pokeM)!=type(None) and canCure:
    cureIntM=[]
    print("poke->cure") ; sys.stdout.flush()
    for i in range(pokeM.shape[1]):
@@ -284,6 +288,8 @@ if type(pokeM)!=type(None):
    cureToDMM=np.linalg.pinv( cureIntM, rcond=1e-2 )
    cureActV=np.dot( cureToDMM, cureWfV )
    curePokedWf=doPlottingComparisonPoke(cureActV,dmActIdx,dm)
+
+if not pokeM is None:
    # overall comparison
    pylab.figure()
    pylab.subplot(3,2,1)
@@ -292,14 +298,15 @@ if type(pokeM)!=type(None):
    pylab.imshow( pokedWf ) ; pylab.title("poked wf w/f")
    pylab.subplot(3,2,2*1+2)
    pylab.imshow( pokedWf-apWf ) ; pylab.title("poked wf less i/p w/f")
-   pylab.subplot(3,2,2*2+2)
-   pylab.imshow( curePokedWf-apWf ) ; pylab.title("cure via FM less i/p w/f")
-   pylab.subplot(3,2,2*2+1)
-   pylab.imshow( curePokedWf ) ; pylab.title("cure via DM w/f")
-
    print("i/p-poked w/f rel var={0:5.3f}".format(
          (apWf-pokedWf).ravel()[apertureIdx].var()/
          (apWf).ravel()[apertureIdx].var() ))
-   print("i/p-cured-poked w/f rel var={0:5.3f}".format(
-         (apWf-curePokedWf).ravel()[apertureIdx].var()/
-         (apWf).ravel()[apertureIdx].var() ))
+   if canCure:
+      pylab.subplot(3,2,2*2+2)
+      pylab.imshow( curePokedWf-apWf ) ; pylab.title("cure via FM less i/p w/f")
+      pylab.subplot(3,2,2*2+1)
+      pylab.imshow( curePokedWf ) ; pylab.title("cure via DM w/f")
+      print("i/p-cured-poked w/f rel var={0:5.3f}".format(
+            (apWf-curePokedWf).ravel()[apertureIdx].var()/
+            (apWf).ravel()[apertureIdx].var() ))
+
