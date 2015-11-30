@@ -40,16 +40,18 @@ def dmFitter(size,dmSfc,dm):
 
 np.random.seed(18071977)
 
-N=12
+N=14
 subApS=8
 fftScl=4
-dmSize=[(N+1)*subApS]*2 # can be None
-dmRot=0
+#dmSize=[(N+1)*subApS]*2 # can be None
+#dmSpacing=[N+1]*2
+dmSize=[16*(N*subApS)/16]*2
+dmSpacing=[16]*2
+dmRot=13.3
 
 # ---
 
 size=N*subApS
-dmSpacing=[N+1]*2
 cds=np.arange(fftScl*subApS)-(fftScl*subApS-1)/2.0
 corrCds=np.arange(subApS)-(subApS-1)/2.0
 fftCorr=ei(-np.pi*(fftScl*subApS)**-1.0*np.add.outer(corrCds,corrCds)
@@ -69,7 +71,7 @@ reconM=np.dot(
    np.linalg.inv( np.dot( gM.T, gM )+1e-3*np.identity(gO.numberPhases) ), gM.T )
 
 if dmSize!=None:
-   dm=abbot.dm.dm(dmSize,dmSpacing,dmRot,within=0,ifScl=2**-0.5)
+   dm=abbot.dm.dm(dmSize,dmSpacing,None,dmRot,within=0,ifScl=2**-0.5)
 else:
    dm=None
 
