@@ -1,5 +1,8 @@
+from __future__ import print_function
 # What is this?
 # diagonal cure over arbritrary apertures
+
+assert 1==0, "THIS CODE DOES NOT CURRENTLY FUNCTION"
 
 import abbot.dicure
 import abbot.phaseCovariance
