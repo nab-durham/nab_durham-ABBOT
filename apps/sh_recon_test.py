@@ -12,6 +12,8 @@ fftScl=1 # the sub-aperture zoom
 dmSize=[14*8]*2 # can be None, the physical size to span
 dmRot=0 # rotation angle of the DM
 dmSpacing=[14]*2 # the size of the DM, NxN
+N=12
+subApS=8
 
 # ---
 
@@ -199,7 +201,7 @@ reconM=np.dot(
    np.linalg.inv( np.dot( gM.T, gM )+1e-3*np.identity(gO.numberPhases) ), gM.T )
 
 if dmSize!=None:
-   dm=abbot.dm.dm(dmSize,dmSpacing,None,dmRot,within=0,ifScl=2**-0.5)
+   dm=abbot.dm.dm(dmSize,dmSpacing,rotation=dmRot,within=0,ifScl=2**-0.5)
 else:
    dm=None
 
@@ -251,12 +253,12 @@ gradsV,focalP=getGrads(apWf),mkFocalP(apWf)
 doPlottingFocalPlane(focalP)
    
 reconWfV=np.dot( reconM, gradsV )
-if type(pokeM)!=type(None):
+if not pokeM is None:
    pokeReconWfV=np.dot( pokeReconM, gradsV )
 
 binnedApWf,reconWf=doPlottingComparisonTheory(reconWfV)
 
-if type(pokeM)!=type(None):
+if not pokeM is None:
    pokedWf=doPlottingComparisonPoke(pokeReconWfV,dmActIdx,dm)
 
 chainsDef,chainsDefChStrts,offsetEstM,wM=prepCure(gO)
@@ -273,7 +275,6 @@ else:
    print("{done}") ; sys.stdout.flush()
    doPlottingComparisonCure(cureWfV,gO)
 
-
 if type(pokeM)!=type(None) and canCure:
    cureIntM=[]
    print("poke->cure") ; sys.stdout.flush()
@@ -288,7 +289,6 @@ if type(pokeM)!=type(None) and canCure:
    cureToDMM=np.linalg.pinv( cureIntM, rcond=1e-2 )
    cureActV=np.dot( cureToDMM, cureWfV )
    curePokedWf=doPlottingComparisonPoke(cureActV,dmActIdx,dm)
-
 if not pokeM is None:
    # overall comparison
    pylab.figure()
