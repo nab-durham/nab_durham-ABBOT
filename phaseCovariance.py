@@ -66,7 +66,7 @@ sfVK=lambda r0,L0,r : sfVKfactor*(L0/r0)**(5/3.0)*numpy.where(
 #  +0.5*\int_A{D_phi(0,x'_2) dx'_2}                   <- [C]
 #  -0.5*\int_A{\int_A{D_phi(x'_1,x'_2) dx'_1} dx'_2}  <- [D]
 
-def covarianceFFT( nfft, r0, L0=None, M=4):
+def covarianceFFT( nfft, r0, L0=None, M=4, full=0):
    '''nfft=# of points in a square grid
       r0=Fried length in pixels
       M=oversampling, 2 minimum
@@ -95,7 +95,59 @@ def covarianceFFT( nfft, r0, L0=None, M=4):
    phaseCovF=numpy.roll(
       numpy.roll(phaseCovF,nfft,axis=0),nfft,axis=1)[:2*nfft,:2*nfft]
    phaseCovF=numpy.roll(numpy.roll(phaseCovF,nfft,axis=0),nfft,axis=1)
-   return phaseCovF
+   return phaseCovF if not full else (phaseCovF, powerSpec)
+
+def covarianceFFTZernikes( nfft, r0, j=(2,56), M=4, verbose=0, full=0):
+   '''nfft=# of points in a square grid
+      r0=Fried length in pixels
+      j=(start,end) Zernikes to use
+      M=oversampling, 2 minimum
+   
+    Calculate the covariance of one point, centred about zero, necessarily
+    regularly spaced.
+    Based on Fourier transforms of Zernikes which then force a circular
+    geometry -> cannot be exact.
+    Then covariance is auto-correlation which is inverse FFT of
+    powerspectrum because uncorrelated terms in freq. space.
+    '''
+   import Zernike
+##   if M<2: raise ValueError("Oversampling must be two or more")
+
+      # \/ compute Zernike amplitude covariances 
+   covAmps = []
+   for zn1 in range(j[0],j[1]+1):
+      zn1Cnf = Zernike.zernNumToDegFreq( zn1 )
+      a1a1 = Zernike.kolmogorovCovariance(zn1,zn1,nfft,r0)
+      covAmps.append( [zn1,zn1,a1a1] )
+      for zn2 in range(zn1+1,j[1]+1):
+         zn2Cnf = Zernike.zernNumToDegFreq( zn2 )
+         if zn1Cnf[1]==zn2Cnf[2]: continue # different m are irrelevant
+         #
+         a1a2 = Zernike.kolmogorovCovariance(zn1,zn2,nfft,r0)
+         if a1a2 == 0: continue
+         covAmps.append( [zn1,zn2,2*a1a2] )
+
+      # \/ sum Fourier representations of Zernikes based on stored amplitudes
+   Qn = lambda n : Zernike.anyFourierZernike(n,M*nfft,M)
+##(unfinished)   soft = Zernike.radius(M*nfft,M*nfft
+##   Qn = lambda n : numpy.fft.fftshift(numpy.fft.ifft2(
+##         numpy.fft.fftshift(Zernike.anyZernike(n,M*nfft,nfft/2,soft=0)) 
+##      ))
+   powerSpec = numpy.zeros([M*nfft]*2, numpy.complex128 )
+   
+   for (zn1,zn2,amp) in covAmps:
+      if verbose:
+         print("Adding for Z_{:d}Z_{:d} with {:5.3e}".format(zn1,zn2,amp))
+      powerSpec += amp*Qn(zn1).conjugate()*Qn(zn2)
+
+   powerSpec = numpy.fft.fftshift( powerSpec )/M**2
+      # \/ one point phase covariance, FFT based
+   phaseCovF=numpy.fft.fft2( powerSpec ).real
+      # \/ centre and slice
+   phaseCovF=numpy.roll(
+      numpy.roll(phaseCovF,nfft,axis=0),nfft,axis=1)[:2*nfft,:2*nfft]
+   phaseCovF=numpy.roll(numpy.roll(phaseCovF,nfft,axis=0),nfft,axis=1)
+   return phaseCovF if not full else (phaseCovF, powerSpec)
 
 def covarianceDirectOneSpacing( dist, r0, L0=None ):
    '''dist=spacing for covariance calculation
