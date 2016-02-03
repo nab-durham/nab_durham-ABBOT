@@ -5,10 +5,28 @@ from __future__ import print_function
 
 import abbot.gradientOperator
 import abbot.dm
-import abbot.apps.fourierSHexample as fourierSH # this needs changing
+import abbot.fourierSH as fourierSH
 import numpy 
 import sys
 import Zernike
+
+def _plotFractionalBar(frac,char='#',length=70,
+      printFraction=False,
+      printPercentage=True,
+      spinner=False
+   ):
+   print(
+      "[ "+
+      char*int(frac*length)+
+      "-"*(length-int(frac*length))+
+      " ]"+
+      ("" if not printPercentage else " {0:3d}%\r".format(int(frac*100))
+         )+
+      ("" if not printFraction else " {0:6.3f}\r".format(frac)
+         )+
+      ("" if not spinner else spinner)
+      , end="" )
+   sys.stdout.flush()
 
 ##
 ## ---- variables begin --------------------------
@@ -18,7 +36,7 @@ N=15
 subApS=2
 fftScl=1
 dmSize=[(N+1)*subApS]*2  # how big (in pixels) is the DM
-dmRot=0.00
+dmRot=13.00
 dmSpacing=[(N+1)]*2 # how many actuators (configuration)
 ##
 ## ---- variables end ----------------------------
@@ -69,12 +87,14 @@ def getGrads(apWf, oldWay=True, extraData=None):
 #(redundant)   else:
 #(redundant)      ( cntr, refslopes, slopeScaling ) = extraData
    if not oldWay:
-      imgs = fourierSH.makeSHImgs( aperture, apWf, N, mag=fftScl,
-            lazyTruncate=1, binning=1,
-            guardPixels=1 if (aperture.shape[0]/N)==2 else 0,
-            radialExtension=0 )
-      gradsV = fourierSH.getSlopes( imgs, cntr, apIdx, refslopes, slopeScaling)
-      focalP = imgs.swapaxes(1,2).reshape([subApS*N]*2)
+##      imgs = fourierSH.makeSHImgs( aperture, apWf, N, mag=fftScl,
+##            lazyTruncate=1, binning=1,
+##            guardPixels=1 if (aperture.shape[0]/N)==2 else 0,
+##            radialExtension=0 )
+##      gradsV = fourierSH.getSlopes( imgs, cntr, apIdx, refslopes, slopeScaling)
+      fSH.makeImgs( apWf, aperture )
+      gradsV = fSH.getSlopes()
+      focalP = fSH.lastSHImage.swapaxes(1,2).reshape([subApS*N]*2).copy()
    else:
       raise ImplementationError("DISABLED")
 
@@ -123,19 +143,23 @@ dm = abbot.dm.dm(dmSize,dmSpacing,rotation=dmRot,within=0, ifScl=ifScl,
       lateralOffset = [ 0.5*-(subApS%2)*subApS**-1.0, 0] )
 
 if not oldWay:
-      cntr = fourierSH.makeCntrArr( subApS )
+##      cntr = fourierSH.makeCntrArr( subApS )
       nPix = subApS*N
       binning = 1
       LT = 1
       GP = 0
       radialExtension = 0
       #
-      ( slopeScaling, reconScalingFactor, tiltFac, refslopes )=\
-            fourierSH.calibrateSHmodel( aperture, cntr, nPix, N, fftScl, apIdx,
-                  [0,], binning, LT, GP, radialExtension 
-               )
+##      ( slopeScaling, reconScalingFactor, tiltFac, refslopes )=\
+##            fourierSH.calibrateSHmodel( aperture, cntr, nPix, N, fftScl, apIdx,
+##                  [0,], binning, LT, GP, radialExtension 
+##               )
       #
-      extraData = ( cntr, refslopes, slopeScaling )
+##      extraData = ( cntr, refslopes, slopeScaling )
+      fSH = fourierSH.FourierShackHartmann( N, aperture, 0.5, 1, binning,
+            [0,], LT, GP, radialExtension
+         )
+      extraData = fSH # this is a compatibility variable, later remove it
 
 if dmRot==0 or 1==1:
    # \/ only works with the assumption that the DM is aligned with the WFS
@@ -152,7 +176,7 @@ pokeM=[]
 for i,actNo in enumerate( dmActIdx ):
    thisApWf=dmFitter(size,dm.poke( actNo ),dm)
    pokeM.append(getGrads(thisApWf, oldWay, extraData)[0])
-   fourierSH._plotFractionalBar( (i+1)*len(dmActIdx)**-1.0 )
+   _plotFractionalBar( (i+1)*len(dmActIdx)**-1.0 )
 
 print()
 
