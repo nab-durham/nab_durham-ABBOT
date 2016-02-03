@@ -164,7 +164,7 @@ class FourierShackHartmann(object):
 ##(to be finished)                     reduceSpatialCoherence(angles[j,i],radialExtension*radius)
 ##(to be finished)                  )
 ##(to be finished)         spatialCoherenceReduction=spatialCoherenceReduction.swapaxes(1,2).reshape([N*sapxls]*2)
-         pass
+         spatialCoherenceReduction=1 # i.e. don't reduce spatial coherence anywhere
       else:
          spatialCoherenceReduction=1 # i.e. don't reduce spatial coherence anywhere
       if (sapxlsFP*self.mag)%1!=0:
@@ -271,6 +271,7 @@ class FourierShackHartmann(object):
       # Make reference values
       self.makeImgs( 0,1 )
       self.refSlopes = self.getSlopes() # raw slopes
+      self.refSHImage = self.lastSHImage.copy() # raw pixels
       assert self.refSlopes.mask.sum()==0, "All refslopes are invalid!"
       assert self.refSlopes.mask.var()==0, "Some refslopes are invalid!"
       #
@@ -293,6 +294,7 @@ class FourierShackHartmann(object):
       # get unscaled tilt slopes
       ## TILT x1
       self.makeImgs( tiltphs,  1 )
+      self.tilt1xSHImage = self.lastSHImage.copy() # tilt 1 pixel
       tilt1xslopes = self.getSlopes()
       self.tilt1xslopes=numpy.ma.masked_array(
             tilt1xslopes.data, tilt1xslopes.mask+tilt1xslopes.data<1e-6 )
@@ -303,6 +305,7 @@ class FourierShackHartmann(object):
       #
       ## TILT x2
       self.makeImgs( tiltphs*2, 1 )
+      self.tilt2xSHImage = self.lastSHImage.copy() # tilt 2 pixel
       tilt2xslopes = self.getSlopes()
       self.tilt2xslopes=numpy.ma.masked_array(
             tilt2xslopes.data, tilt2xslopes.mask+tilt2xslopes.data<1e-6 )
