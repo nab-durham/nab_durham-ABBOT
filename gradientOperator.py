@@ -1,5 +1,5 @@
-"""What is this?
-Generate gradient operators based on pupil mask.
+"""ABBOT : Generate gradient operators based on pupil mask.
+
 Also define a geometry class that is generally useful.
 """
 

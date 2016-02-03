@@ -1,9 +1,11 @@
+"""ABBOT: Phase covariance functions
+Generate phase covariances via inverse discrete fourier transform (so regular
+points, okay for SH) and more generally via direct computation
+
+Enhance: use structure functions, piston-removed for Kolmogorov
+"""
+
 from __future__ import print_function
-# What is this?
-# Generate phase covariances via inverse discrete fourier transform (so regular
-# points, okay for SH) and more generally via direct computation
-#
-# Enhance: use structure functions, piston-removed for Kolmogorov
 
 import numpy
 import scipy.special

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """ABBOT : class-based functions to make realistic SH patterns.
+
 Note that the radial extension feature is not realistic for LGS
 spot extension since it emulates the effect of a fully coherent source.
 That is, no attempt is made to average over realizations of the reduction

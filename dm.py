@@ -1,6 +1,6 @@
 from __future__ import print_function
-# What is this?
-# Simple-minded dm model with gaussian influence fns
+"""ABBOT: Simple-minded dm model with gaussian influence fns
+"""
 
 import numpy
 
