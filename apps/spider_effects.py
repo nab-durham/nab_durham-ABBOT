@@ -1,3 +1,5 @@
+# What is this?
+# Study the effect of spiders, that can rotate, on wavefront reconstruction
 from __future__ import print_function
 import numpy
 import abbot.fourierSH as FSH
