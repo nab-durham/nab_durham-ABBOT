@@ -56,13 +56,15 @@ class FourierShackHartmann(object):
 
    def __init__( self, N, aperture, illuminationFraction,\
             magnification=2, binning=1, wavelengths=[0,],
-            lazyTruncate=1, guardPixels=1, radialExtension=0 ):
+            lazyTruncate=1, guardPixels=1, radialExtension=0,
+            resampling=1 ):
       '''Parameters for instantiation are,
          N            : scale of sub-apertures
          aperture     : mask of aperture covering lenslets
          0<illuminationFraction<=1: fraction of illumination to accept
          magnification: magnification of each spot
-         binning      : how much to bin each spot before assigning
+         binning      : how much to expand and then contract each spot 
+         resampling   : how much to bin each spot before assigning
          wavelengths  : simulate, crudely, polychromatism via the 'l' variable,
             monochromatic by default
          lazyTruncate : whether to assume each spot can't/won't move into it's
@@ -78,6 +80,7 @@ class FourierShackHartmann(object):
          Note that binning is first used as a magnification factor and then
          as a factor to bin pixel by.
          This permits finer granulation of magnification.
+         The resampling parameter, on the other hand, doesn't do thsi
 
          Note that guardPixels must be zero if using lazyTruncate; with
          lazyTruncate the effect is implicitly having a guard-band although the
@@ -87,9 +90,9 @@ class FourierShackHartmann(object):
       assert aperture.shape[0]==aperture.shape[1],\
             "aperture array shape should be square"
       ( self.N, self.aperture, self.mag, self.binning, self.wls,
-         self.lazyTrunc, self.guardPixels, self.RE
+         self.lazyTrunc, self.guardPixels, self.RE, self.resampling
       ) = N, aperture, magnification, binning, wavelengths,  lazyTruncate,\
-            guardPixels, radialExtension
+            guardPixels, radialExtension, resampling
 
       self.nPix = self.aperture.shape[0]
       self.illuminationFraction = illuminationFraction
@@ -97,7 +100,7 @@ class FourierShackHartmann(object):
       sapxls=map(lambda s : int(numpy.ceil(s*N**-1.0)), aperture.shape)
       assert len(sapxls)==2 and sapxls[0]==sapxls[1], "Require a square, for now"
       self.sapxls = sapxls[0]
-      self._makeCntrArr(self.sapxls)
+      self._makeCntrArr(self.sapxls//self.resampling)
       self.mask = rebin( aperture, N )*(self.sapxls**-2.0)
       self.maskB = (self.mask>=self.illuminationFraction)
       self.numSAs = self.maskB.sum()
@@ -105,7 +108,7 @@ class FourierShackHartmann(object):
       #
       self.slopeScaling, self.refSlopes = 1,0
 
-   def _makeCntrArr( self, P,zeroOffset=True ):
+   def _makeCntrArr( self, P,zeroOffset=False ):
       '''Produce two 2D arrays which are constant in Y or X and linear increase
       from -1 to +1 in X or Y, respectively. For CoG centroiding.
       Optionally accounting for the single pixel offset so that zero is defined
@@ -149,10 +152,16 @@ class FourierShackHartmann(object):
       else:
          spatialCoherenceReduction=1 # i.e. don't reduce spatial coherence anywhere
       if (sapxlsFP*self.mag)%1!=0:
-         suggested_mags=( (sapxls*self.binning)*self.mag )//(sapxls*self.binning)
+         suggested_mags = sapxlsFP//( self.sapxls*self.binning )
          raise ValueError("Magnification {0:f} is too fine-grained, "\
                "suggest using either {1[0]:f} or {1[1]:f}".format(
-                     self.mag, (suggested_mag, suggested_mag+(sapxls*binnng)))
+                     self.mag,
+                     (suggested_mag, suggested_mag+(sapxlsFP//self.mag))
+                  )
+            )
+      if self.sapxls%self.resampling!=0:
+         raise ValueError("Resampling {0:f} is too fine-grained".format(
+                     self.resampling)
             )
       if sapxlsFP-max(self.wls)<1:
          raise ValueError("wls has too large a value, must be < {0:d}".format(
@@ -177,8 +186,9 @@ class FourierShackHartmann(object):
                numpy.fft.fft2( tip, s=[sapxlsFP+twl]*2
                   ), (2,3) ) )**2.0 # no requirement to preserve phase therefore only one fftshift
          top = top.reshape([ self.N, self.N ]+
-                  [(sapxlsFP+twl)//self.binning,self.binning,
-                   (sapxlsFP+twl)//self.binning,self.binning]
+                  [  (sapxlsFP+twl)//self.binning, self.binning,
+                     (sapxlsFP+twl)//self.binning, self.binning
+                  ]
                ).sum(axis=-3).sum(axis=-1)
          polyChromSHImgs.append( top ) # save everything, for now
        
@@ -222,9 +232,10 @@ class FourierShackHartmann(object):
                numpy.arange(self.N)*(self.sapxls+self.guardPixels),
                offset+numpy.arange(self.sapxls) ).ravel()
          canvas = canvas.mean( axis=0 ).take( idx, axis=0 ).take( idx, axis=1 )
+         # reshape the canvas, resample, and store
          self.lastSHImage = canvas.reshape(
-               [ self.N, self.sapxls ]*2 
-            ).swapaxes(1,2)
+               [ self.N, self.sapxls//self.resampling,self.resampling ]*2 
+            ).sum(axis=2).sum(axis=5-1).swapaxes(1,2)
          return
 
    def getSlopes( self ):
@@ -257,7 +268,8 @@ class FourierShackHartmann(object):
       assert self.refSlopes.mask.var()==0, "Some refslopes are invalid!"
       #
       # move 1/4 sub-aperture
-      self.tiltFac = 0.5*self.nPix*(self.sapxls*self.mag)**-1.0 
+      self.tiltFac =\
+            0.5*self.nPix*(self.sapxls*self.mag//self.resampling)**-1.0 
       tiltphs = makeTiltPhase( self.nPix, self.tiltFac )
       # now, 1/4 sub-aperture for sapxls means that the signal from tiltphs
       # is the tilt for a slope of:
@@ -270,7 +282,7 @@ class FourierShackHartmann(object):
       # now add a negative factor (don't know why)
       self.reconScalingFactor *= -1
       # and finally the effect of rebinning into sapxls^2
-      self.reconScalingFactor *= self.sapxls**2.
+      self.reconScalingFactor *= self.sapxls//self.resampling**2.
       #
       # get unscaled tilt slopes
       ## TILT x1
