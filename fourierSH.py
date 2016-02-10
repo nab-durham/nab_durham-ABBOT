@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+## [bug:1] magnification,binning==1->two-point calibration is insufficient.
 """ABBOT : class-based functions to make realistic SH patterns.
 
 Note that the radial extension feature is not realistic for LGS
@@ -108,19 +109,38 @@ class FourierShackHartmann(object):
       #
       self.slopeScaling, self.refSlopes = 1,0
 
-   def _makeCntrArr( self, P,zeroOffset=False ):
+   def _makeCntrArr( self, P,zeroOffset=False, quantize=1 ):
       '''Produce two 2D arrays which are constant in Y or X and linear increase
       from -1 to +1 in X or Y, respectively. For CoG centroiding.
       Optionally accounting for the single pixel offset so that zero is defined
       at an array element for even-sized arrays.
+      quantize = number of pieces to quantize into e.g. 2 is equivalent
+         to operating with a quadcell (just a negative or positive value)
       Returns a 4D array compatible with SH images for direct multiplication.
       '''
-      cntr=[  numpy.add.outer(
-            (numpy.linspace(-1,1-(P**-1.0*2. if zeroOffset else 0),P)),
-            numpy.zeros(P)) 
-         ]
+      linearComponent = numpy.linspace(
+            -1, 1-(P**-1.0*2. if zeroOffset else 0), P
+         )
+      assert (P*quantize**-1.0)%1==0
+      
+      # quantize. A punishing algorithm that basically,
+      #  a. reshapes the array and averages over quantize-sized segments
+      #  b. creates a list of quantize-copies of the averaged segments
+      #  c. reforms this into an array the same shape as that originally given
+      linearComponent = numpy.array(
+            linearComponent.reshape(
+                  [quantize,P//quantize]
+               ).mean(axis=1).reshape([1,-1]).tolist()*(P//quantize)
+         ).T.ravel()
+
+      cntr=[ numpy.add.outer( linearComponent, numpy.zeros(P)) ]
       cntr.append( cntr[0].T )
+      
+      # create an appropriate shape for multiplication with an array of
+      # sub-aperture pixels for each of the two directions
       self.cntr = numpy.array(cntr).T.reshape([1,1,P,P,2])
+      #
+      return self
 
    def makeImgs( self, phs, amplitudeScaling=1 ): 
       '''Produce Shack-Hartmann images.
@@ -202,7 +222,6 @@ class FourierShackHartmann(object):
             polyChromSHImgs[i] =\
                   polyChromSHImgs[i].take(idx,axis=2).take(idx,axis=3)
          self.lastSHImage = numpy.mean( polyChromSHImgs, axis=0 )
-         return
       else:
          # algorithm: make a canvas upon which SH sub-aperture images are
          #  painted, and then place for each sa, the result for each wl, all
@@ -236,7 +255,8 @@ class FourierShackHartmann(object):
          self.lastSHImage = canvas.reshape(
                [ self.N, self.sapxls//self.resampling,self.resampling ]*2 
             ).sum(axis=2).sum(axis=5-1).swapaxes(1,2)
-         return
+      #
+      return self
 
    def getSlopes( self ):
       '''Based on the last image produced, and the calibrations, estimate
@@ -260,6 +280,10 @@ class FourierShackHartmann(object):
          by 1/4 and 1/2 of the sub-aperture width in both directions
          simultaneously.
       """
+## [bug:1] For magnification & binning = 1 (smallest spot) the two-point
+##  calibration procedure is insufficient because the spot response to tilt
+##  is non-linear. This should be flagged as a potential issue
+##
       # Make reference values
       self.makeImgs( 0,1 )
       self.refSlopes = self.getSlopes() # raw slopes
@@ -309,7 +333,7 @@ class FourierShackHartmann(object):
       # now generate slope scaling
       self.slopeScaling =\
             0.5*(1/(1e-15+self.tilt1xslopes)+2/(1e-15+self.tilt2xslopes))
-      return 
+      return self
 
 
 if __name__=="__main__":
