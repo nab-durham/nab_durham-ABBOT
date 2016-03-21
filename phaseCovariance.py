@@ -177,6 +177,7 @@ def covarianceDirectRegular( nfft, r0, L0=None ):
     '''
 
    if L0:
+# FIXME:- change the following line to better test for a sequence
       if "__len__" in dir(type(nfft)):
          ra=numpy.roll( numpy.arange(2*nfft[0])-nfft[0],nfft[0] ) # twice as big
          rb=numpy.roll( numpy.arange(2*nfft[1])-nfft[1],nfft[1] )
@@ -215,55 +216,105 @@ def covarianceDirectRegular( nfft, r0, L0=None ):
               +0.5*averagedSf[nfft,nfft]-0.5*averagedSf[:-1,:-1].mean() # [B] & [D]
       return numpy.roll(numpy.roll(covOnce,nfft,axis=1),nfft,axis=0)
 
+class covarianceMatrix(numpy.ndarray):
+   '''Internal class that should only be instantiated by a following function.'''
+   def __new__( self, mask ):
+      mask = numpy.array(mask).astype(numpy.bool)
+      assert len(mask.shape)==2, "Expect a 2D mask"
+      maskI = numpy.flatnonzero( mask.ravel() )
+      illuminatedNo = len(maskI)
+      shapeFromMask = [illuminatedNo]*2 # size
+      mask2gridI = numpy.arange(
+            shapeFromMask[0]*shapeFromMask[1] )[maskI]
+      obj = numpy.ndarray.__new__( self, shapeFromMask ).view(
+             covarianceMatrix )
+      obj.mask,obj.maskI,obj.mask2gridI = mask, maskI, mask2gridI
+      return( obj )
+
+
 def covarianceMatrixFillInRegular( SinglePhaseCovariance ):
    '''Calculate a regularly spaced covariance matrix given a regularly spaced
    single point covariance'''
-   nfft=SinglePhaseCovariance.shape
-   if len(nfft)!=2 or nfft[0]!=nfft[1]:
-      raise ValueError("Require square input")
-   else:
-      nfft=nfft[0]/2
-   phaseCov=numpy.zeros([nfft**2]*2,numpy.float64) # phase covariance matrix
-   for i in range(nfft**2):
-      phaseCov[i]=numpy.roll(numpy.roll(
-         SinglePhaseCovariance,i//nfft,axis=0),i%nfft,axis=1)[:nfft,:nfft].ravel()
-   return phaseCov
+   maskShape=[ thisShape/2 for thisShape in SinglePhaseCovariance.shape ]
+   return covarianceMatrixFillInMasked(
+         SinglePhaseCovariance, 
+         numpy.ones( maskShape, numpy.bool )
+      )
+##   nfft=SinglePhaseCovariance.shape
+##   if len(nfft)!=2 or nfft[0]!=nfft[1]:
+##      raise ValueError("Require square input")
+##   else:
+##      nfft=nfft[0]/2
+##   phaseCov=numpy.zeros([nfft**2]*2,numpy.float64) # phase covariance matrix
+##   for i in range(nfft**2):
+##      phaseCov[i]=numpy.roll(numpy.roll(
+##         SinglePhaseCovariance,i//nfft,axis=0),i%nfft,axis=1)[:nfft,:nfft].ravel()
+##   return phaseCov
+   
 
 def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
-   '''Calculate a covariance matrix given a mask and 
-   single point covariance that is regularly spaced.'''
+   '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.'''
    covS=SinglePhaseCovariance.shape
    maskS=Mask.shape
    assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
       "Size mismatch between one-point covariance and mask"
-   
-   illuminatedIdx=numpy.flatnonzero( Mask.ravel() )
-   illuminatedNo=len(illuminatedIdx)
-   maskIdx=\
-      numpy.arange(maskS[0]*maskS[1])[illuminatedIdx]
-#      numpy.arange(maskS[0]*maskS[1]).reshape(maskS).ravel()[illuminatedIdx]
-   # maskIdx is therefore the indices corresponding to illuminated
-   # sub-apertures so need the covariance from one to the other. Easiest way to
-   # do this is to slice the single phase covariance array, and 
-   # extract the relevant parts in one go using maskIdx
+   covM = covarianceMatrix( Mask )
       # \/ recentre covariances
+   covCent = [ (thisDim)/2 for thisDim in covS ]
    for axis in (0,1):
       SinglePhaseCovariance=numpy.roll(
-         SinglePhaseCovariance,covS[axis]/2, axis=axis)
-   phaseCov=numpy.zeros([illuminatedNo]*2,numpy.float64)
-   covCent=[ (thisDim)/2 for thisDim in covS ]
-   for i in range(illuminatedNo):
-      maskPos=( maskIdx[i]//maskS[1],maskIdx[i]%maskS[1] )
-         # \/ based on a geometrical arrangement of indices
+         SinglePhaseCovariance,covCent[axis], axis=axis)
+      # \/ copy covariances
+   for i,maskIdx in enumerate( covM.maskI ):
+      maskPos=( maskIdx//maskS[1],maskIdx%maskS[1] )
+         # \/ 1. remove the correctly placed and sized region
       covSlice=SinglePhaseCovariance[
          covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
          covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
             ]
-      phaseCov[i]=covSlice.ravel()[maskIdx]
-   return phaseCov
+         # \/ 1. convert to 1D and apply mask
+      covM[i] = covSlice.ravel()[covM.maskI]
+   return covM 
+
+##def covarianceMatrixExtractInto2D( phaseCov, Mask ):
+##   '''Extract from a regularly spaced covariance matrix and its mask, the single point covariance function.
+##   '''
+##   ## TODO got here
+##   covS=numpy.zeros( xtermMask.shape[1]*Mask.shape[1] )
+##   covSnumber=numpy.zeros( 
+##   maskS=Mask.shape
+##   assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
+##      "Size mismatch between one-point covariance and mask"
+##   
+##   illuminatedIdx=numpy.flatnonzero( Mask.ravel() )
+##   illuminatedNo=len(illuminatedIdx)
+##   maskIdx=\
+##      numpy.arange(maskS[0]*maskS[1])[illuminatedIdx]
+###      numpy.arange(maskS[0]*maskS[1]).reshape(maskS).ravel()[illuminatedIdx]
+##   # maskIdx is therefore the indices corresponding to illuminated
+##   # sub-apertures so need the covariance from one to the other. Easiest way to
+##   # do this is to slice the single phase covariance array, and 
+##   # extract the relevant parts in one go using maskIdx
+##      # \/ recentre covariances
+##   for axis in (0,1):
+##      SinglePhaseCovariance=numpy.roll(
+##         SinglePhaseCovariance,covS[axis]/2, axis=axis)
+##   phaseCov=numpy.zeros([illuminatedNo]*2,numpy.float64)
+##   covCent=[ (thisDim)/2 for thisDim in covS ]
+##   for i in range(illuminatedNo):
+##      maskPos=( maskIdx[i]//maskS[1],maskIdx[i]%maskS[1] )
+##         # \/ based on a geometrical arrangement of indices
+##      covSlice=SinglePhaseCovariance[
+##         covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+##         covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+##            ]
+##      phaseCov[i]=covSlice.ravel()[maskIdx]
+
 
 def choleskyDecomp( Covariance ):
-   return numpy.linalg.cholesky(Covariance) # cholesky decomposition
+   '''Cholesky decomposition, using numpy and returning a float64 array.
+   '''
+   return numpy.linalg.cholesky(Covariance).view(numpy.ndarray)
 
 if __name__=='__main__':
    timing={}
