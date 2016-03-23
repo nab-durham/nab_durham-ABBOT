@@ -240,17 +240,6 @@ def covarianceMatrixFillInRegular( SinglePhaseCovariance ):
          SinglePhaseCovariance, 
          numpy.ones( maskShape, numpy.bool )
       )
-##   nfft=SinglePhaseCovariance.shape
-##   if len(nfft)!=2 or nfft[0]!=nfft[1]:
-##      raise ValueError("Require square input")
-##   else:
-##      nfft=nfft[0]/2
-##   phaseCov=numpy.zeros([nfft**2]*2,numpy.float64) # phase covariance matrix
-##   for i in range(nfft**2):
-##      phaseCov[i]=numpy.roll(numpy.roll(
-##         SinglePhaseCovariance,i//nfft,axis=0),i%nfft,axis=1)[:nfft,:nfft].ravel()
-##   return phaseCov
-   
 
 def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
    '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.'''
@@ -276,39 +265,52 @@ def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
       covM[i] = covSlice.ravel()[covM.maskI]
    return covM 
 
-##def covarianceMatrixExtractInto2D( phaseCov, Mask ):
-##   '''Extract from a regularly spaced covariance matrix and its mask, the single point covariance function.
-##   '''
-##   ## TODO got here
-##   covS=numpy.zeros( xtermMask.shape[1]*Mask.shape[1] )
-##   covSnumber=numpy.zeros( 
-##   maskS=Mask.shape
-##   assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
-##      "Size mismatch between one-point covariance and mask"
-##   
-##   illuminatedIdx=numpy.flatnonzero( Mask.ravel() )
-##   illuminatedNo=len(illuminatedIdx)
-##   maskIdx=\
-##      numpy.arange(maskS[0]*maskS[1])[illuminatedIdx]
-###      numpy.arange(maskS[0]*maskS[1]).reshape(maskS).ravel()[illuminatedIdx]
-##   # maskIdx is therefore the indices corresponding to illuminated
-##   # sub-apertures so need the covariance from one to the other. Easiest way to
-##   # do this is to slice the single phase covariance array, and 
-##   # extract the relevant parts in one go using maskIdx
-##      # \/ recentre covariances
-##   for axis in (0,1):
-##      SinglePhaseCovariance=numpy.roll(
-##         SinglePhaseCovariance,covS[axis]/2, axis=axis)
-##   phaseCov=numpy.zeros([illuminatedNo]*2,numpy.float64)
-##   covCent=[ (thisDim)/2 for thisDim in covS ]
-##   for i in range(illuminatedNo):
-##      maskPos=( maskIdx[i]//maskS[1],maskIdx[i]%maskS[1] )
-##         # \/ based on a geometrical arrangement of indices
-##      covSlice=SinglePhaseCovariance[
-##         covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
-##         covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
-##            ]
-##      phaseCov[i]=covSlice.ravel()[maskIdx]
+def covarianceMatrixExtractInto2D( covM, average=True ):
+   '''Extract from a regularly spaced covariance matrix, the single point covariance function.
+   By default, the covariance functions will be averaged to obtain the one
+   single point function but this can be altered to get all possible single
+   point functions.
+   '''
+   maskS = covM.mask.shape
+   covCent = maskS # they are identical by defn.
+   covSPS = [ (thisDim)*2 for thisDim in maskS ]
+      # \/ the single point (SP) covariance
+   covSPEst = numpy.zeros(
+         ([] if average else [covM.mask.sum()])+covSPS, numpy.float64 ) 
+      # \/ no. per SP covariance estimate
+   covNPts = numpy.zeros(
+         ([] if average else [covM.mask.sum()])+covSPS, numpy.int32 ) 
+   #
+   covRegion = numpy.ma.masked_array( numpy.zeros(maskS), ~covM.mask )
+   for i,maskIdx in enumerate( covM.maskI ):
+      maskPos=( maskIdx//maskS[1],maskIdx%maskS[1] )
+         # \/ 1. using mask, convert to 2D
+      covRegion.ravel()[covM.maskI] = covM[i]
+      if average: 
+            # \/ 2a. save onto a single point estimate
+         covSPEst[
+            covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+            covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+               ] += covRegion
+         covNPts[
+            covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+            covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+               ] += covM.mask
+      else: 
+            # \/ 2b. save into a separate single point estimate
+         covSPEst[i,
+            covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+            covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+               ] = covRegion
+         covNPts[i,
+            covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+            covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+               ] = covM.mask
+   #
+   if average:
+      covSPEst /= numpy.where( covNPts, covNPts.astype( numpy.float64 ),1 ) 
+   covSPEst = numpy.ma.masked_array( covSPEst, covNPts==0 ) # mask
+   return( covSPEst, covNPts )
 
 
 def choleskyDecomp( Covariance ):
@@ -358,19 +360,19 @@ if __name__=='__main__':
          for j in range(0,nfft,4)]).reshape([(nfft/4)**2,2])
    print(">")
 
-   import matplotlib.pyplot as pg
-   pg.figure(1)
-   pg.title("structure functions")
+   import matplotlib.pyplot as pylab
+   pylab.figure(1)
+   pylab.title("structure functions")
    sfDist=sf[:,0]+0.0 ; sfDist.sort()
    if L0:
-      pg.plot( sfDist,sfVK(r0,L0,sfDist),
+      pylab.plot( sfDist,sfVK(r0,L0,sfDist),
          'k', lw=1, alpha=0.75, label='theory (V-K)' )
-      pg.plot( sfDist, 6.88*(sfDist/r0)**(5/3.0),
+      pylab.plot( sfDist, 6.88*(sfDist/r0)**(5/3.0),
          'k--', lw=1, alpha=0.75, label='theory (K.)' )
    else:
-      pg.plot( sfDist, 6.88*(sfDist/r0)**(5/3.0),
+      pylab.plot( sfDist, 6.88*(sfDist/r0)**(5/3.0),
          'k', lw=1, alpha=0.75, label='theory' )
-   pg.plot( sf[:,0], sf[:,1], 'b.', label='structure function, FFT' )
+   pylab.plot( sf[:,0], sf[:,1], 'b.', label='structure function, FFT' )
 
    try:
       import Zernike
@@ -391,19 +393,19 @@ if __name__=='__main__':
       phaseVar=( fftTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
       remnantVar=numpy.array([
          phaseVar-(zfftCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
-      pg.figure(2)
-      pg.title("Phase variance remnants")
-      pg.plot( numpy.arange(1,16), expectedVar,'wo', label='Kolmog theory')
-      pg.plot( numpy.arange(1,16), remnantVar,'b.', label='FFT')
+      pylab.figure(2)
+      pylab.title("Phase variance remnants")
+      pylab.plot( numpy.arange(1,16), expectedVar,'wo', label='Kolmog theory')
+      pylab.plot( numpy.arange(1,16), remnantVar,'b.', label='FFT')
 
    print("Waiting for click in matplotlib window...",end="")
    sys.stdout.flush()
-   #pg.waitforbuttonpress()
+   #pylab.waitforbuttonpress()
    print("(cont.)")
 #[ Polling in matplotlib does not work
 #[    waiting=True
 #[    def onclick(event): waiting=False
-#[    cid = pg.gcf().canvas.mpl_connect('button_press_event', onclick)
+#[    cid = pylab.gcf().canvas.mpl_connect('button_press_event', onclick)
 #[    import time
 #[    while waiting:
 #[       time.sleep(0.1) 
@@ -429,30 +431,31 @@ if __name__=='__main__':
 #[          for j in range(nfft)]).reshape([(nfft)**2,2])
    print(">")
 
-   pg.figure(1)
-   pg.plot( sf[:,0], sf[:,1], 'g.', label='structure function, direct' )
-   pg.legend(loc=0)
+   pylab.figure(1)
+   pylab.plot( sf[:,0], sf[:,1], 'g.', label='structure function, direct' )
+   pylab.legend(loc=0)
 
    if haveZernike:
       zdirectCoeffs=numpy.dot(cholInv, numpy.dot( z15f, directTestPhase ) )/(z15Norm**0.5)
       phaseVar=( directTestPhase.take(zIdx,axis=0)**2.0 ).sum(axis=0)/(z15Norm)
       remnantDirectVar=numpy.array([
          phaseVar-(zdirectCoeffs[:i+1]**2.0).sum(axis=0) for i in range(15) ]).mean(axis=1)
-      pg.figure(2)
-      pg.plot( numpy.arange(1,16), remnantDirectVar,'g.', label='direct')
+      pylab.figure(2)
+      pylab.plot( numpy.arange(1,16), remnantDirectVar,'g.', label='direct')
 
-   #pg.show()
+   #pylab.show()
    
    print("Waiting for click in matplotlib window") ; sys.stdout.flush()
-   #pg.waitforbuttonpress()
+   #pylab.waitforbuttonpress()
 
    # check masked method
-   mask=numpy.zeros([nfft,nfft/4])
+   #mask=numpy.zeros([nfft,nfft/4])
    #maskLen=int(numpy.where(1000>(nfft**2.0/4.0),nfft**2.0/4.0,1000))
    #maskIdx=numpy.random.uniform(0,nfft**2,size=[maskLen]).astype(numpy.int)
    #mask.ravel()[maskIdx]=1
    #mask[0,0]=1 # ensure first point is zero
-   mask[:nfft/4,:nfft/4]=1 ; mask[-nfft/4:,:nfft/4]=1
+   #mask[:nfft/4,:nfft/4]=1 ; mask[-nfft/4:,:nfft/4]=1
+   mask = Zernike.anyZernike(1,nfft,nfft/2.)
    maskIdx=mask.ravel().nonzero()[0]
    maskIdx.sort()
    maskLen=len(maskIdx)
@@ -474,12 +477,12 @@ if __name__=='__main__':
    SortedDist=maskDist[:,0] # undecorate
 
    sfMaskedPV=((maskedPV[0]-maskedPV[SortedIdx])**2.0).mean(axis=1) 
-   pg.figure(1)
-   pg.plot( SortedDist, sfMaskedPV,'r.', label='sf via masked cov')
-   pg.legend(loc=0)
+   pylab.figure(1)
+   pylab.plot( SortedDist, sfMaskedPV,'r.', label='sf via masked cov')
+   pylab.legend(loc=0)
    
    print("Waiting for click in matplotlib window") ; sys.stdout.flush()
-   pg.waitforbuttonpress()
+   pylab.waitforbuttonpress()
 
    # timing analysis
    print("FFT times,")
