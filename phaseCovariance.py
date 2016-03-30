@@ -224,11 +224,9 @@ class covarianceMatrix(numpy.ndarray):
       maskI = numpy.flatnonzero( mask.ravel() )
       illuminatedNo = len(maskI)
       shapeFromMask = [illuminatedNo]*2 # size
-      mask2gridI = numpy.arange(
-            shapeFromMask[0]*shapeFromMask[1] )[maskI]
       obj = numpy.ndarray.__new__( self, shapeFromMask ).view(
              covarianceMatrix )
-      obj.mask,obj.maskI,obj.mask2gridI = mask, maskI, mask2gridI
+      obj.mask,obj.maskI = mask, maskI
       return( obj )
 
 
@@ -271,15 +269,15 @@ def covarianceMatrixExtractInto2D( covM, average=True ):
    single point function but this can be altered to get all possible single
    point functions.
    '''
-   maskS = covM.mask.shape
+   maskS,maskN = covM.mask.shape, covM.mask.sum()
    covCent = maskS # they are identical by defn.
    covSPS = [ (thisDim)*2 for thisDim in maskS ]
       # \/ the single point (SP) covariance
    covSPEst = numpy.zeros(
-         ([] if average else [covM.mask.sum()])+covSPS, numpy.float64 ) 
+         ([] if average else [maskN])+covSPS, numpy.float64 ) 
       # \/ no. per SP covariance estimate
    covNPts = numpy.zeros(
-         ([] if average else [covM.mask.sum()])+covSPS, numpy.int32 ) 
+         ([] if average else [maskN])+covSPS, numpy.int32 ) 
    #
    covRegion = numpy.ma.masked_array( numpy.zeros(maskS), ~covM.mask )
    for i,maskIdx in enumerate( covM.maskI ):
