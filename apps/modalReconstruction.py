@@ -35,7 +35,7 @@ nMask=int(mask.sum())
 gradOp=abbot.gradientOperator.gradientOperatorType1(pupilMask=mask)
 gradM=gradOp.returnOp()
 
-modalBasis=MB.modalBasis( mask,
+modalBasis=MB.polySinRadAziBasisType1( mask,
       [],[], orthonormalize=0, verbose=1 )
 #mBs=modalBasis.orthomodalFunctions
 mBidxs=[(1, 1, 1), (1, 1, 0), (1, 2, 1), (1, 3, 1), (1, 3, 0)]
@@ -56,7 +56,7 @@ modalFilterM=mBs.T.dot(mBs)
 # (f) clippedmbFs=u[:gradOp.numberPhases].dot(v*s.reshape([-1,1])).T
 # (F) fmbinteractM=gradM.dot(fmbOFs)
 
-explicitModalBasis=MB.modalBasis( mask,
+explicitModalBasis=MB.polySinRadAziBasisType1( mask,
       range(19),range(19), orthonormalize=0, verbose=1 )
 embFs=explicitModalBasis.modalFunctions
 if clipModalFunctions:

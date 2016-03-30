@@ -111,7 +111,8 @@ def _doGeneralPreparation(baseSize,nAzis):
    _plotFractionalBar(0.6)
 
    # \/ compute modal bases 
-   ZmodalBasis=modalBasis.modalBasis( masks[0], [1],[1,2], orthonormalize=0 )
+   ZmodalBasis=modalBasis.polySinRadAziBasisType1(
+         masks[0], [1],[1,2], orthonormalize=0 )
    modalFiltering=[ 
          thismodalB.reshape([-1,1]).dot(thismodalB.reshape([1,-1]))
             for thismodalB in ZmodalBasis.modalFunctions ]

@@ -106,7 +106,9 @@ def doGradientMatrices( masks, nAzis ):
 def doModalFilterMatrices( masks, nMasks, nAzis ):
    import modalBasis
       # \/ compute modal basis for mask no. 1 only
-   ZmodalBasis=modalBasis.modalBasis( masks[0], [1],[1,2], orthonormalize=0 )
+   ZmodalBasis=modalBasis.polySinRadAziBasisType1(
+         masks[0], [1],[1,2], orthonormalize=0 
+      )
    modalFiltering=[ 
          thismodalB.reshape([-1,1]).dot(thismodalB.reshape([1,-1]))
             for thismodalB in ZmodalBasis.modalFunctions ]
