@@ -8,7 +8,8 @@ import numpy
 # Go to the bottom of this file to see test code
 # ================
 
-printDot=lambda op,extra: None # dummy code
+def printDot( op,extra=None):
+   return # dummy code
 
 def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
       showSteps=False):
@@ -182,9 +183,9 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
 
 if __name__=="__main__":
    import sys
-   import dm
-   import gradientOperator
-   import phaseCovariance
+   import abbot.dm as dm
+   import abbot.gradientOperator as gradientOperator
+   import abbot.phaseCovariance as phaseCovariance
    import time
 
    def printDot(op=True,extra=None):
