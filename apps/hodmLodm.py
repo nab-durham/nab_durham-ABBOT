@@ -146,9 +146,16 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
             # the filtered HO PMX i.e. which pokes produce signals that
             # are orthogonal to the LODM signals.
          printDot(showSteps)
+         hoPMX_i=numpy.linalg.pinv( hoPMX, lambd[0] ) # convert into poke space
+         P_o = hoPMX_i.dot( orthchosenPMX ) # convert orthogonal, chosen modes into poke space of mirror
          filteredHOModesM=numpy.zeros([sum(dm['ho'].usable)]*2)
-         filteredHOModesM[chosenI(lambd[1])]=\
-               ( cholchosenPMXTchosenPMXT_i.dot(orthchosenPMX.T.dot(fhoPMX)) )
+# -- \/ nuovo --------
+         filteredHOModesM = P_o.dot(orthchosenPMX.T).dot(fhoPMX) # nuovo
+# -- /\ nuovo --------
+# -- \/ vecchio ------
+#         filteredHOModesM[chosenI(lambd[1])]=\
+#               ( cholchosenPMXTchosenPMXT_i.dot(orthchosenPMX.T.dot(fhoPMX)) )
+# -- /\ vecchio ------
          filtered2pokesM=numpy.zeros(
                [sum(dm['ho'].usable)+sum(dm['lo'].usable)]*2)
          filtered2pokesM[sI['lo']:eI['lo'],sI['lo']:eI['lo']]=\
@@ -157,11 +164,11 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                filteredHOModesM
 
          sTsM=stackedFilteredPMX.T.dot(stackedFilteredPMX)
+         printDot(showSteps)
             # \/ reconstructor in the LODM pokes & LODM-filtered HO modes bases
-         printDot(showSteps)
          rmxLFMB=numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedFilteredPMX.T)
-            # \/ reconstructor in the LODM pokes & HODM pokes bases
          printDot(showSteps)
+            # \/ reconstructor in the LODM pokes & HODM pokes bases
          rmx=filtered2pokesM.dot( rmxLFMB )
          reconMs[reconType]={
              'stackedFilteredPMX':stackedFilteredPMX,
@@ -176,7 +183,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
       if type(reconMs[key])!=dict:
          reconMs[key]={'rmx':reconMs[key]}
       elif 'rmx' not in reconMs[key].keys():
-         raise ValueError("'rmx' not a key in reconMs")
+         raise ValueError("'rmx' not a key in reconMs/{:s}".format(key))
    return reconMs
 
 # --- main logic follows below ---
@@ -290,7 +297,7 @@ if __name__=="__main__":
 
 
    # -- variables --
-   scaling=30
+   scaling=16
    nSubAps=scaling-1      # number of sub-apertures
    hodmN=scaling          # high-order DM number of actuators
    lodmN=scaling//4       # low-order DM number of actuators
