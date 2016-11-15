@@ -131,8 +131,21 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
             # that produce the wavefront, so tacitly ignore the others
          chosenPMX=hoPMX[:,chosenI(lambd[1])] 
          printDot(showSteps,"+")
-         cholchosenPMXTchosenPMX=\
-               numpy.linalg.cholesky( chosenPMX.T.dot(chosenPMX) )
+         chosenTchosenM = chosenPMX.T.dot(chosenPMX)
+         try:
+            cholchosenPMXTchosenPMX = numpy.linalg.cholesky( chosenTchosenM )
+         except numpy.linalg.linalg.LinAlgError:
+            print("WARNING: could not form Cholesky decomposition, will have to regularize to lambd[0]")
+            eigVals = numpy.linalg.eigvals( chosenTchosenM )
+#DEBUG#            print(min(eigVals.real),min(abs(eigVals)))
+            regulnM = numpy.identity( sum(dm['ho'].usable)
+                  )*abs(max(eigVals))*lambd[0] 
+            cholchosenPMXTchosenPMX = numpy.linalg.cholesky(
+                  chosenTchosenM+regulnM )
+            choleskyRegularization = regulnM
+         else:
+            choleskyRegularization = None
+
             # \/ converts the matrix to being orthogonal
          printDot(showSteps,"-")
          cholchosenPMXTchosenPMXT_i=numpy.linalg.inv(cholchosenPMXTchosenPMX.T)
@@ -174,6 +187,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
              'stackedFilteredPMX':stackedFilteredPMX,
              'filteredHOModesM':filteredHOModesM,
              'rmxLFMB':rmxLFMB,
+             'choleskyRegularization':choleskyRegularization,
              'rmx':rmx
             }
 
@@ -305,7 +319,7 @@ if __name__=="__main__":
          "Inv+Tik","PMX_filtering")
                           # /\ which reconstructors to calculate
                           # \/ regularization parameters
-   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(0.00001,0.40)]
+   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(1e-6,0.15)]
    try:
       reconTypeIdx=int(sys.argv[1])
       doPlotting=False
