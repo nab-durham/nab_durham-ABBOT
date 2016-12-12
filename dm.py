@@ -60,8 +60,11 @@ class dm(object):
                    y*self.actspacing[1]+(self.npix[1])/2. ]
          self.actCds.append((xC,yC))
          if type(self.mask)!=type(None):
-            self.usable.append(
-              self.mask[int(yC-0.5),int(xC-0.5)])
+            maskY,maskX = [ int( 
+                     ( (yC,xC)[i]-0.5
+                     )*self.mask.shape[i]/float(self.npix[i])
+                  ) for i in (0,1) ]
+            self.usable.append( self.mask[maskY,maskX] )
       if self.rotation!=0:
          for i in range(self.nacts):
             self.actCds[i]=self.rotator(self.actCds[i],self.rotation)
