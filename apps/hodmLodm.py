@@ -224,7 +224,7 @@ if __name__=="__main__":
                           (radius>=(radii[1]*nSubAps/2.0)), 1, 0)
 
    def generateTestPhase(gO,r0,N):
-      L0=3
+      L0=4.
       rdm=numpy.random.normal(size=gO.numberPhases)
 
       directPCOne=phaseCovariance.covarianceDirectRegular( N, r0, L0 )
@@ -322,7 +322,8 @@ if __name__=="__main__":
    lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(1e-6,0.15)]
    try:
       reconTypeIdx=int(sys.argv[1])
-      doPlotting=False
+      doPlotting=False if reconTypeIdx<0 else True
+      reconTypeIdx=abs(reconTypeIdx)
    except:
       reconTypeIdx=4         # which reconstructor to use (makes several types)
       doPlotting=True
