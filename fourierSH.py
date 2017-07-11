@@ -127,10 +127,15 @@ class FourierShackHartmann(object):
       #  a. reshapes the array and averages over quantize-sized segments
       #  b. creates a list of quantize-copies of the averaged segments
       #  c. reforms this into an array the same shape as that originally given
+#(2017-06-06) Bug?      linearComponent = numpy.array(
+#(2017-06-06) Bug?            linearComponent.reshape(
+#(2017-06-06) Bug?                  [quantize,P//quantize]
+#(2017-06-06) Bug?               ).mean(axis=1).reshape([1,-1]).tolist()*(P//quantize)
+#(2017-06-06) Bug?         ).T.ravel()
       linearComponent = numpy.array(
             linearComponent.reshape(
                   [quantize,P//quantize]
-               ).mean(axis=1).reshape([1,-1]).tolist()*(P//quantize)
+               ).mean(axis=0).reshape([1,-1]).tolist()*(quantize)
          ).T.ravel()
 
       cntr=[ numpy.add.outer( linearComponent, numpy.zeros(P)) ]
