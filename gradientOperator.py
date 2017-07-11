@@ -1,8 +1,10 @@
-# What is this?
-# Generate gradient operators based on pupil mask.
-# Also define a geometry class that is generally useful.
+"""ABBOT : Generate gradient operators based on pupil mask.
+
+Also define a geometry class that is generally useful.
+"""
 
 import numpy
+import types
 
 # Hardy, 1998, p.270 for configurations
 # Type 1 = Fried
@@ -18,8 +20,8 @@ class geometryType1:
    numberPhases=None
 
    def __init__( self, subapMask=None, pupilMask=None ):
-      if subapMask!=None: self.newSubaperturesGiven(subapMask)
-      if pupilMask!=None: self.newPupilGiven(pupilMask)
+      if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
+      if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
 
    def newSubaperturesGiven(self, subapMask):
       self.numberSubaps=int(subapMask.sum()) # =n**2 for all illuminated
@@ -535,6 +537,8 @@ def genericLaplacianCalcOp(operator):
          if valid[j].shape[0]==1:
             row.append(i) ; col.append(valid[j][0])
             data.append(self.laplacianStencil[j])
+   if len(row)==0 or len(col)==0:
+      raise ValueError("Nothing found")
    if self.sparse:
       import scipy.sparse
       self.op=scipy.sparse.csr_matrix( (data, (row,col)), dtype=numpy.float64 )
@@ -547,6 +551,11 @@ class laplacianOperatorType1(gradientOperatorType1):
    '''Define an operator that computes the Laplacian'''
    laplacianLocFn=genericLaplacian_findLocation
    laplacianStencil=laplacianStencil
+   def newPupilGiven(self, pupilMask):
+      pupilMask=numpy.where(pupilMask>0,1,0) # binarise
+      # now the subtle part is to develop a consistent sub-aperture mask
+      self.newSubaperturesGiven( ((pupilMask[:-1,:-1]+pupilMask[1:,:-1]\
+                  +pupilMask[1:,1:]+pupilMask[:-1,1:])>=4) )
    def calcOp_NumpyArray(self):
       genericLaplacianCalcOp(self)
    def calcOp_scipyCSR(self):
@@ -574,6 +583,65 @@ class kolmogInverseOperatorType1(gradientOperatorType1):
       genericKolmogInverseCalcOp_NumpyArray(self)
    def calcOp_scipyCSR(self):
       genericKolmogInverseCalcOp_NumpyArray(self)
+
+def genericfindLocation(self, i):
+   thisIdx=self.illuminatedCornersIdx[i]
+   idxRge=numpy.arange(self.W)-(self.W//2)
+   wantedIdx=thisIdx+\
+       numpy.add.outer(idxRge*self.n_[1],idxRge).ravel()
+      # \/ check if found indices are in the right place
+   rowcolIdx=[ numpy.add.outer(idxRge+thisIdx//self.n_[1],
+                  numpy.zeros(self.W)).ravel(),
+               numpy.add.outer(numpy.zeros(self.W),
+                  idxRge+thisIdx%self.n_[1]).ravel() ]
+   valid=[ numpy.flatnonzero( (self.illuminatedCornersIdx==twantedIdx)*
+                              ((twantedIdx//self.n_[1])==rowcolIdx[0][i])*
+                              ((twantedIdx%self.n_[1])==rowcolIdx[1][i]) )
+      for i,twantedIdx in enumerate(wantedIdx) ]
+   return valid
+
+def genericCalcOp(operator):
+   self=operator
+   data=[] ; row=[] ; col=[]
+   for i in range(self.numberPhases):
+      valid=self.locFn(i)
+      for j in range(len(self.stencil)):
+         if valid[j].shape[0]==1 and self.stencil[j]!=None:
+            row.append(i) ; col.append(valid[j][0])
+            data.append(self.stencil[j])
+   if self.sparse:
+      import scipy.sparse
+      if len(data)==0:
+         data,row,col=[[0]]*3 # fake
+      self.op=scipy.sparse.csr_matrix( (data, (row,col)), dtype=numpy.float64 )
+   else:
+      self.op=numpy.zeros( [self.numberPhases]*2, numpy.float64 )
+      for i in range(len(row)): self.op[ row[i],col[i] ]=data[i]
+
+   # diagonalSmoothingStencil for 3x3 pixels
+diagonalSmoothingStencil3x3=[0.1,None,0.1,None,0.6,None,0.1,None,0.1]
+   # diagonalSmoothingStencil for 3x3 pixels
+crossSmoothingStencil3x3=[None,0.1,None,0.1,0.6,0.1,None,0.1,None]
+
+class genericOperatorType1(gradientOperatorType1):
+   '''Define a generic operator, assuming a square & odd numbered stencil'''
+   locFn=genericfindLocation
+   def __init__( self, subapMask=None, pupilMask=None, W=3, sparse=False ):
+      self.W=W
+      self.stencil=[None]*(self.W**2)
+      gradientOperatorType1.__init__(self,subapMask,pupilMask,sparse)
+
+   def calcOp_NumpyArray(self):
+      genericCalcOp(self)
+   def calcOp_scipyCSR(self):
+      genericCalcOp(self)
+
+class smoothingOperatorType1(genericOperatorType1):
+   '''Define an operator that smooths neighbours'''
+   def __init__( self, stencil, subapMask=None, pupilMask=None, sparse=False ):
+      genericOperatorType1.__init__(
+            self,subapMask,pupilMask, int(len(stencil)**0.5), sparse)
+      self.stencil=stencil
 
 # ------------------------------
 

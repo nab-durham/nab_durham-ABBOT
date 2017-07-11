@@ -8,7 +8,8 @@ import numpy
 # Go to the bottom of this file to see test code
 # ================
 
-printDot=lambda op,extra: None # dummy code
+def printDot( op,extra=None):
+   return # dummy code
 
 def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
       showSteps=False):
@@ -130,8 +131,21 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
             # that produce the wavefront, so tacitly ignore the others
          chosenPMX=hoPMX[:,chosenI(lambd[1])] 
          printDot(showSteps,"+")
-         cholchosenPMXTchosenPMX=\
-               numpy.linalg.cholesky( chosenPMX.T.dot(chosenPMX) )
+         chosenTchosenM = chosenPMX.T.dot(chosenPMX)
+         try:
+            cholchosenPMXTchosenPMX = numpy.linalg.cholesky( chosenTchosenM )
+         except numpy.linalg.linalg.LinAlgError:
+            print("WARNING: could not form Cholesky decomposition, will have to regularize to lambd[0]")
+            eigVals = numpy.linalg.eigvals( chosenTchosenM )
+#DEBUG#            print(min(eigVals.real),min(abs(eigVals)))
+            regulnM = numpy.identity( sum(dm['ho'].usable)
+                  )*abs(max(eigVals))*lambd[0] 
+            cholchosenPMXTchosenPMX = numpy.linalg.cholesky(
+                  chosenTchosenM+regulnM )
+            choleskyRegularization = regulnM
+         else:
+            choleskyRegularization = None
+
             # \/ converts the matrix to being orthogonal
          printDot(showSteps,"-")
          cholchosenPMXTchosenPMXT_i=numpy.linalg.inv(cholchosenPMXTchosenPMX.T)
@@ -145,9 +159,16 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
             # the filtered HO PMX i.e. which pokes produce signals that
             # are orthogonal to the LODM signals.
          printDot(showSteps)
+         hoPMX_i=numpy.linalg.pinv( hoPMX, lambd[0] ) # convert into poke space
+         P_o = hoPMX_i.dot( orthchosenPMX ) # convert orthogonal, chosen modes into poke space of mirror
          filteredHOModesM=numpy.zeros([sum(dm['ho'].usable)]*2)
-         filteredHOModesM[chosenI(lambd[1])]=\
-               ( cholchosenPMXTchosenPMXT_i.dot(orthchosenPMX.T.dot(fhoPMX)) )
+# -- \/ nuovo --------
+         filteredHOModesM = P_o.dot(orthchosenPMX.T).dot(fhoPMX) # nuovo
+# -- /\ nuovo --------
+# -- \/ vecchio ------
+#         filteredHOModesM[chosenI(lambd[1])]=\
+#               ( cholchosenPMXTchosenPMXT_i.dot(orthchosenPMX.T.dot(fhoPMX)) )
+# -- /\ vecchio ------
          filtered2pokesM=numpy.zeros(
                [sum(dm['ho'].usable)+sum(dm['lo'].usable)]*2)
          filtered2pokesM[sI['lo']:eI['lo'],sI['lo']:eI['lo']]=\
@@ -156,16 +177,17 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                filteredHOModesM
 
          sTsM=stackedFilteredPMX.T.dot(stackedFilteredPMX)
+         printDot(showSteps)
             # \/ reconstructor in the LODM pokes & LODM-filtered HO modes bases
-         printDot(showSteps)
          rmxLFMB=numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedFilteredPMX.T)
-            # \/ reconstructor in the LODM pokes & HODM pokes bases
          printDot(showSteps)
+            # \/ reconstructor in the LODM pokes & HODM pokes bases
          rmx=filtered2pokesM.dot( rmxLFMB )
          reconMs[reconType]={
              'stackedFilteredPMX':stackedFilteredPMX,
              'filteredHOModesM':filteredHOModesM,
              'rmxLFMB':rmxLFMB,
+             'choleskyRegularization':choleskyRegularization,
              'rmx':rmx
             }
 
@@ -175,16 +197,16 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
       if type(reconMs[key])!=dict:
          reconMs[key]={'rmx':reconMs[key]}
       elif 'rmx' not in reconMs[key].keys():
-         raise ValueError("'rmx' not a key in reconMs")
+         raise ValueError("'rmx' not a key in reconMs/{:s}".format(key))
    return reconMs
 
 # --- main logic follows below ---
 
 if __name__=="__main__":
    import sys
-   import dm
-   import gradientOperator
-   import phaseCovariance
+   import abbot.dm as dm
+   import abbot.gradientOperator as gradientOperator
+   import abbot.phaseCovariance as phaseCovariance
    import time
 
    def printDot(op=True,extra=None):
@@ -202,7 +224,7 @@ if __name__=="__main__":
                           (radius>=(radii[1]*nSubAps/2.0)), 1, 0)
 
    def generateTestPhase(gO,r0,N):
-      L0=3
+      L0=4.
       rdm=numpy.random.normal(size=gO.numberPhases)
 
       directPCOne=phaseCovariance.covarianceDirectRegular( N, r0, L0 )
@@ -289,7 +311,7 @@ if __name__=="__main__":
 
 
    # -- variables --
-   scaling=30
+   scaling=16
    nSubAps=scaling-1      # number of sub-apertures
    hodmN=scaling          # high-order DM number of actuators
    lodmN=scaling//4       # low-order DM number of actuators
@@ -297,10 +319,11 @@ if __name__=="__main__":
          "Inv+Tik","PMX_filtering")
                           # /\ which reconstructors to calculate
                           # \/ regularization parameters
-   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(0.00001,0.40)]
+   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(1e-6,0.15)]
    try:
       reconTypeIdx=int(sys.argv[1])
-      doPlotting=False
+      doPlotting=False if reconTypeIdx<0 else True
+      reconTypeIdx=abs(reconTypeIdx)
    except:
       reconTypeIdx=4         # which reconstructor to use (makes several types)
       doPlotting=True

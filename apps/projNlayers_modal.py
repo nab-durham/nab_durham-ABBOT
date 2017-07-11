@@ -62,8 +62,10 @@ aa=2*numpy.pi*(nAzi**-1.0)
 
 reconGeometry=projection.projection(
       numpy.ceil( numpy.arange(numpy.ceil((Hmax/dH)))*dH ),
-      [za]*nAzi, numpy.arange(nAzi)*aa, mask, starHeight=starHeight )
-ZmodalBasis=modalBasis.modalBasis( mask, [1],[1,2], orthonormalize=0 )
+      [za]*nAzi, numpy.arange(nAzi)*aa, mask, starHeight )
+ZmodalBasis=modalBasis.polySinRadAziBasisType1(
+      mask, [1],[1,2], orthonormalize=0
+   )
 modalFiltering=[ 
       thismodalB.reshape([-1,1]).dot(thismodalB.reshape([1,-1]))
          for thismodalB in ZmodalBasis.modalFunctions ]
