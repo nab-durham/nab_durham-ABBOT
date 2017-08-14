@@ -3,10 +3,22 @@ from __future__ import print_function
 # High-order/low-order separation
 
 import numpy
+import string
 
 # ================
 # Go to the bottom of this file to see test code
 # ================
+
+class knownReconstructors:
+   SVDONLY = "SVD_only"
+   INVTIK = "Inv+Tik"
+   DIAGONALREGLN = "Diagonal-regularized"
+   LOWORDERPNLZTN = "Low-order-penalization"
+   PMXFLTRNG = "PMX_filtering"
+
+knownReconstructorsList = [ vars(knownReconstructors)[ip]
+            for ip in filter( lambda an : an[:2]!="__", vars(knownReconstructors) )
+   ]
 
 def printDot( op,extra=None):
    return # dummy code
@@ -16,18 +28,27 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
    reconMs={}
    dmLength=sum([ sum(dm[k].usable) for k in dm.keys() ])
    for reconType,lambd in reconTypes:
-      printDot(showSteps,
-            "makeReconstructors: Making '{0:s}' reconstructor".format(
+      if reconType not in knownReconstructorsList: 
+         raise ValueError( "Unknown reconstructor '{0:s}', not in '{1:s}'".format(
+                  reconType, string.join( knownReconstructorsList, ", " )) )
+      printDot(showSteps, "makeReconstructors: Making '{0:s}' reconstructor".format(
                reconType))
-      if reconType=="SVD_only":
+      if reconType==knownReconstructors.SVDONLY:
+         # SVD_only
          sTsM=stackedPMX.T.dot(stackedPMX)
-         reconMs[reconType]=numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedPMX.T)
-      elif reconType=="Inv+Tik":
+         reconMs[reconType]={
+               'rmx' :numpy.linalg.pinv( sTsM, lambd[0]).dot(stackedPMX.T),
+               'svdtrunc': lambd[0]
+            }
+      elif reconType==knownReconstructors.INVTIK:
+         # Inv+Tik
          sTsM=stackedPMX.T.dot(stackedPMX)
          tikhonovRegM=numpy.identity(dmLength)
-         reconMs[reconType]=\
-               numpy.linalg.inv( sTsM+tikhonovRegM*lambd[0] ).dot(stackedPMX.T)
-      elif reconType=="Diagonal-regularized":
+         reconMs[reconType]={
+               'rmx':numpy.linalg.inv( sTsM+tikhonovRegM*lambd[0] ).dot(stackedPMX.T),
+               'tikhonovRegM':tikhonovRegM*lambd[0]
+            }
+      elif reconType==knownReconstructors.DIAGONALREGLN:
          filterM=numpy.zeros(
                [ sum(dm['ho'].usable),
                  sum(dm['ho'].usable)+sum(dm['lo'].usable)],numpy.float64)
@@ -42,10 +63,14 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                        ]=1 
          sTsM=stackedPMX.T.dot(stackedPMX)
          tikhonovRegM=numpy.identity(dmLength)
-         reconMs[reconType]=numpy.linalg.inv(
-                     sTsM+lambd[0]*filterM.T.dot(filterM)+tikhonovRegM*lambd[1]
-                                            ).dot( stackedPMX.T )
-      elif reconType=="Low-order-penalization":
+         reconMs[reconType]={
+               'rmx':numpy.linalg.inv(
+                        sTsM+lambd[0]*filterM.T.dot(filterM)+tikhonovRegM*lambd[1]
+                                           ).dot( stackedPMX.T ),
+               'tikhonovRegM':tikhonovRegM*lambd[1]
+            }
+
+      elif reconType==knownReconstructors.LOWORDERPNLZTN:
          lodmN=dm['lo'].actGeom[0]
          hodmN=dm['ho'].actGeom[0]
          filterM=numpy.zeros(
@@ -87,7 +112,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
          reconMs[reconType]=\
                numpy.linalg.pinv( sTsM+lambd[0]*fTfM).dot(stackedPMX.T)
 
-      elif reconType=="PMX_filtering":
+      elif reconType==knownReconstructors.PMXFLTRNG:
          if lambd[1]<=0 or lambd[1]>=1: raise ValueError("0<lambd[1]<1 != True")
          # A crude but not inaccurate approach to filtering the HODM poke
          # matrix such that it does not contain the measurements produced by
@@ -315,11 +340,12 @@ if __name__=="__main__":
    nSubAps=scaling-1      # number of sub-apertures
    hodmN=scaling          # high-order DM number of actuators
    lodmN=scaling//4       # low-order DM number of actuators
-   reconTypes=("SVD_only","Diagonal-regularized","Low-order-penalization",
-         "Inv+Tik","PMX_filtering")
+   reconTypes=knownReconstructors
+   #("SVD_only","Inv+Tik","Diagonal-regularized","Low-order-penalization",
+   # "PMX_filtering")
                           # /\ which reconstructors to calculate
                           # \/ regularization parameters
-   lambds=[(0.000001,),(0.1,0.001),(1.0,1.0,0.001),(0.00001,),(1e-6,0.15)]
+   lambds=[(0.000001,),(0.00001,),(0.1,0.001),(1.0,1.0,0.001),(1e-6,0.15)]
    try:
       reconTypeIdx=int(sys.argv[1])
       doPlotting=False if reconTypeIdx<0 else True
