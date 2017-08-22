@@ -46,7 +46,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
          tikhonovRegM=numpy.identity(dmLength)
          reconMs[reconType]={
                'rmx':numpy.linalg.inv( sTsM+tikhonovRegM*lambd[0] ).dot(stackedPMX.T),
-               'tikhonovRegM':tikhonovRegM*lambd[0]
+               'lambd0':lambd[0],
             }
       elif reconType==knownReconstructors.DIAGONALREGLN:
          filterM=numpy.zeros(
@@ -67,7 +67,9 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                'rmx':numpy.linalg.inv(
                         sTsM+lambd[0]*filterM.T.dot(filterM)+tikhonovRegM*lambd[1]
                                            ).dot( stackedPMX.T ),
-               'tikhonovRegM':tikhonovRegM*lambd[1]
+               'filterM':filterM.diagonal(),
+               'lambd0':lambd[0],
+               'lambd1':lambd[1],
             }
 
       elif reconType==knownReconstructors.LOWORDERPNLZTN:
@@ -109,11 +111,15 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                   modeCounter+=1
          fTfM=filterM.T.dot(filterM)
          sTsM=stackedPMX.T.dot(stackedPMX)
-         reconMs[reconType]=\
-               numpy.linalg.pinv( sTsM+lambd[0]*fTfM).dot(stackedPMX.T)
+         reconMs[reconType]={\
+               'rmx':numpy.linalg.pinv( sTsM+lambd[0]*fTfM).dot(stackedPMX.T),
+               'filterM':filterM,
+               'lambd0':lambd[0],
+               'lambd1':lambd[1],
+            }
 
       elif reconType==knownReconstructors.PMXFLTRNG:
-         if lambd[1]<=0 or lambd[1]>=1: raise ValueError("0<lambd[1]<1 != True")
+         if lambd[1]<0 or lambd[1]>1: raise ValueError("0<lambd[1]<1 != True")
          # A crude but not inaccurate approach to filtering the HODM poke
          # matrix such that it does not contain the measurements produced by
          # the LODM:
