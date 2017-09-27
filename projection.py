@@ -87,7 +87,7 @@ class geometry(object):
          tPM=numpy.array(tPM) # will almost always work
          if not tPM.dtype in (
                int,float,numpy.int32,numpy.int16,numpy.int64,numpy.int,
-               numpy.float32,numpy.float64):
+               numpy.float32,numpy.float64,numpy.bool):
             warningStr="Incompatible dtype for mask {0:d}".format(i+1)
             raise RuntimeError(warningStr)
          if len(tPM.shape)!=2:
