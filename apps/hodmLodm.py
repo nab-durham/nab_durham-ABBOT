@@ -2,6 +2,9 @@ from __future__ import print_function
 # What is this?
 # High-order/low-order separation
 
+# TODO:
+# (*) Ensure that the filterM's take into account the ptp of the relevant components of the stackedPMX
+
 import numpy
 import string
 
@@ -14,6 +17,7 @@ class knownReconstructors:
    INVTIK = "Inv+Tik"
    DIAGONALREGLN = "Diagonal-regularized"
    LOWORDERPNLZTN = "Low-order-penalization"
+   HOPMXPNLZTN = "High-order-PMX_penalization"
    PMXFLTRNG = "PMX_filtering"
 
 knownReconstructorsList = [ vars(knownReconstructors)[ip]
@@ -117,7 +121,73 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                'lambd0':lambd[0],
                'lambd1':lambd[1],
             }
+      #
+      elif reconType==knownReconstructors.HOPMXPNLZTN:
+         from abbot.projection import projection
+         from abbot.gradientOperator import gradientOperatorType1
+         ap,gO={},{}
+         nSubaps,nActs={},{}
+         # \/ geometry
+         for tap in ['lo','ho']:
+            ap[tap]       = numpy.array(dm[tap].usable).reshape(dm[tap].actGeom)
+            gO[tap]       = gradientOperatorType1( pupilMask=ap[tap] )
+            nSubaps[tap]  = gO[tap].numberSubaps
+            nActs[tap]    = sum(dm[tap].usable)
 
+         gM_ho = gO['ho'].returnOp()
+#NOT_REQD.         ratios = [ (ap['ho'].shape[i]-1.0)/(ap['lo'].shape[i]-1.0) for i in (0,1) ]
+         ratios = [ (ap['ho'].shape[i]-0.0)/(ap['lo'].shape[i]-0.0) for i in (0,1) ]
+         assert ratios[0]==ratios[1], "Mismatched ratios, cannot continue"
+         ratio = ratios[0] ; del ratios
+         # \/ use projection to just map from low-order actuator positions to
+         # high-order actuator coverage (one:many)
+#NOT_REQD.         pO = projection(
+#NOT_REQD.               [0], [0], [0], [gO['ho'].subapMask, gO['lo'].subapMask],
+#NOT_REQD.               [None], [1, ratio]
+#NOT_REQD.            )
+         pO = projection( [0], [0], [0], [ap['ho'],ap['lo']], [None], [1, ratio]
+            )
+         pM = ( pO.layerCentreProjectionMatrix()
+               ).take( pO.maskInLayerIdx(0,ap['ho']), 1 )
+#NOT_REQD.         pM = ( pO.layerCentreProjectionMatrix()
+#NOT_REQD.               ).take( pO.maskInLayerIdx(0,gO['ho'].subapMask), 1 )
+#NOT_REQD.         spM = numpy.array(
+#NOT_REQD.                  [[ pM, pM*0 ],
+#NOT_REQD.                   [ pM*0, pM ] ] 
+#NOT_REQD.               ).swapaxes(1,2).reshape( [2*pM.shape[0],-1]
+#NOT_REQD.            )
+#NOT_REQD.         spM_i = numpy.linalg.pinv( spM,1e-1 ) # no need to regularize
+            # \/ form averaging matrix, over HO slopes
+#NOT_REQD.         avgM = spM_i.dot( spM )
+         avgM = pM
+            # \/ check
+#NOT_REQD.         assert avgM.sum(1).var()<1e-10, "Insufficient ho coverage for averaging"
+# biljana
+         filterM = numpy.zeros(
+               [ avgM.shape[0], (nActs['lo']+nActs['ho']) ] )
+         tikhonovRegM=numpy.identity( nActs['ho']+nActs['lo'] )
+         assert filterM.shape[1]==stackedPMX.shape[1],\
+               "Wrong assumption in building gradientOperator"
+         if dmOrder[0]=='lo':
+##            normalization = stackedPMX[nActs['lo']:].ptp()/0.25
+            filterM[:,nActs['lo']:] = avgM##.dot(gM_ho*normalization)
+            tikhonovRegM[:nActs['lo'],:nActs['lo']]*=0
+         else:
+##            normalization = stackedPMX[:nActs['ho']].ptp()/0.25
+            filterM[:,:nActs['ho']] = avgM##.dot(gM_ho*normalization)
+            tikhonovRegM[nActs['ho']:,nActs['ho']:]*=0
+         
+         fTfM=filterM.T.dot(filterM)
+         sTsM=stackedPMX.T.dot(stackedPMX)
+         reconMs[reconType]={\
+               'rmx':numpy.linalg.inv(
+                        sTsM+lambd[0]*fTfM+tikhonovRegM*lambd[1] 
+                     ).dot(stackedPMX.T),
+               'filterM':filterM,
+               'lambd0':lambd[0],
+               'lambd1':lambd[1],
+            }
+      #
       elif reconType==knownReconstructors.PMXFLTRNG:
          if lambd[1]<0 or lambd[1]>1: raise ValueError("0<lambd[1]<1 != True")
          # A crude but not inaccurate approach to filtering the HODM poke
@@ -239,6 +309,7 @@ if __name__=="__main__":
    import abbot.gradientOperator as gradientOperator
    import abbot.phaseCovariance as phaseCovariance
    import time
+   import argparse
 
    def printDot(op=True,extra=None):
       if op and type(extra)==type(None):
@@ -255,7 +326,7 @@ if __name__=="__main__":
                           (radius>=(radii[1]*nSubAps/2.0)), 1, 0)
 
    def generateTestPhase(gO,r0,N):
-      L0=4.
+      L0=100.
       rdm=numpy.random.normal(size=gO.numberPhases)
 
       directPCOne=phaseCovariance.covarianceDirectRegular( N, r0, L0 )
@@ -296,7 +367,7 @@ if __name__=="__main__":
       return stackPokeM
 
 
-   def doPlotsAndPrints(vizAs, ipVs, doPlotting=True):
+   def doPlotsAndPrintsViz(vizAs, ipVs, doPlotting=True):
       if doPlotting: import matplotlib.pyplot as pyp
       import string
       if doPlotting: pyp.figure(1)
@@ -326,7 +397,16 @@ if __name__=="__main__":
          if doPlotting:
             pyp.figure(2)
             pyp.plot( op, label=opTitle )
-         print(" range of {0:s}={1:f}".format( opCmd,op.ptp() ))
+         print("{2:s} {0:s} = {1:5.3f}".format(
+                  string.ljust(opCmd,45),
+                  op.ptp(),
+                  string.rjust("range of",15)
+               ))
+         print("{2:s} {0:s} = {1:5.3f}".format(
+                  string.ljust(opCmd,45),
+                  op.std(),
+                  string.rjust("s.d. of",15)
+               ))
       #
       print(" "+"-"*70)
       if doPlotting:
@@ -338,33 +418,107 @@ if __name__=="__main__":
          pyp.plot([0,dmLength-1],[ipVs['ho'].min()]*2,'k--',lw=1,alpha=0.5)
          pyp.plot([0,dmLength-1],[ipVs['ho'].max()]*2,'k--',lw=1,alpha=0.5)
          pyp.show()
+   
+   def doPlotsAndPrintsAct(vizAs, ipVs, doPlotting=True):
+      if doPlotting: import matplotlib.pyplot as pyp
+      import string
+      print(" "+"=-"*35)
+      for i,dataToPlot in enumerate((
+               [ ("ho","+"), ],
+               [ ("lo","+"), ],
+            )):
+         if doPlotting:
+            pyp.figure(3)
+            pyp.subplot(2,1,1+i)
+            op=eval(string.join([ "{0[1]:s}vizAs['{0[0]:s}']".format(thisData)
+                  for thisData in dataToPlot ]))
+            opTitle=string.join([ "{0[1]:s}{0[0]:s}".format(thisData)
+                  for thisData in dataToPlot ])
+         if doPlotting:
+            pyp.imshow( op )
+            pyp.colorbar()
+            pyp.title( opTitle )
+         #
+
+         opCmd=string.join([ "{0[1]:s}ipVs['{0[0]:s}']".format(thisData)
+               for thisData in dataToPlot ])
+         op=eval(opCmd)
+         if doPlotting:
+            pyp.figure(4)
+            pyp.plot( op, label=opTitle )
+         print("{2:s} {0:s} = {1:5.3f}".format(
+                  string.ljust(opCmd,45),
+                  op.ptp(),
+                  string.rjust("range of",15)
+               ))
+         print("{2:s} {0:s} = {1:5.3f}".format(
+                  string.ljust(opCmd,45),
+                  op.std(),
+                  string.rjust("s.d. of",15)
+               ))
       #
+      print(" "+"-="*35)
+      if doPlotting:
+         pyp.figure(4)
+         pyp.xlabel("actuator index (0...nPoints-1)")
+         pyp.ylabel("actuator cmd")
+         pyp.legend(loc=0)
+         for k,c in ('lo','g'),('ho','b'):
+            dmLength=sum(dm[k].usable)
+            pyp.plot([0,dmLength-1],
+                  [ipVs[k].min()]*2,c+'--',lw=1,alpha=0.5)
+            pyp.plot([0,dmLength-1],
+                  [ipVs[k].max()]*2,c+'--',lw=1,alpha=0.5)
+         pyp.show()
 
+#  =========================================================================
 
+   # \/ regularization parameters
+   lambds={
+         "SVD_only"                    :(0.0001,),
+         "Inv+Tik"                     :(0.0001,),
+         "Diagonal-regularized"        :(0.01,0.0001),
+         "Low-order-penalization"      :(0.01,3.0),
+         "High-order-PMX_penalization" :(100,0.0001),
+         "PMX_filtering"               :(1e-6,0.001)
+      }
+   assert numpy.std([ lk in knownReconstructorsList for lk in lambds ]
+         )==0, "Mismatch"
+
+   parser=argparse.ArgumentParser(
+         description='investigate CDRAGON-type LTAO LGS asterism diameters' )
+   parser.add_argument('reconstructorIdx',
+         help= 'Reconstructor name\n'+
+            ("NOTE: known reconstructors are:\n"
+                  +string.join(["\n\t{:s},".format(n) for n in lambds.keys() ])
+               ),
+         nargs=1, type=str ) 
+   parser.add_argument('-f', help='fix seed', action='store_true')
+   parser.add_argument('-P', help='Do plotting', action='store_true')
+   parser.add_argument('-N',
+         help='HO no. actuators, N x N', type=int, default=18 )
+   parser.add_argument('-n',
+         help='LO no. actuators, n x n', type=int, default=6 )
+   parser.add_argument('-R',
+         help='Outer radius', type=float, default=1 )
+   parser.add_argument('-r',
+         help='Inner radius', type=float, default=0.2 )
+   args=parser.parse_args(sys.argv[1:])
+   #
    # -- variables --
-   scaling=16
-   nSubAps=scaling-1      # number of sub-apertures
-   hodmN=scaling          # high-order DM number of actuators
-   lodmN=scaling//4       # low-order DM number of actuators
-   reconTypes=knownReconstructors
-   #("SVD_only","Inv+Tik","Diagonal-regularized","Low-order-penalization",
-   # "PMX_filtering")
-                          # /\ which reconstructors to calculate
-                          # \/ regularization parameters
-   lambds=[(0.000001,),(0.00001,),(0.1,0.001),(1.0,1.0,0.001),(1e-6,0.15)]
-   try:
-      reconTypeIdx=int(sys.argv[1])
-      doPlotting=False if reconTypeIdx<0 else True
-      reconTypeIdx=abs(reconTypeIdx)
-   except:
-      reconTypeIdx=4         # which reconstructor to use (makes several types)
-      doPlotting=True
+   fixSeed=args.f
+   reconTypeIdx=args.reconstructorIdx[0]
+   doPlotting=args.P
    dmOrder=('lo','ho')    # which order to concatenate the poke matrices
-   radii=[1,0.2]          # sub-aperture mask radii (relative)
-   #numpy.random.seed(int(time.time()%18071977)) # set the seed, changing
-   numpy.random.seed(18071977) # set the seed, fixed
-
-   # (ends)
+   radii=[args.R,args.r]  # sub-aperture mask radii (relative)
+   if fixSeed:
+      numpy.random.seed(18071977) # set the seed, fixed
+   else:
+      numpy.random.seed(int(time.time()%18071977)) # set the seed, changing
+   scaling=args.N
+   nSubAps=scaling-1      # number of sub-apertures
+   hodmN=args.N           # high-order DM number of actuators i.e. Fried geom.
+   lodmN=args.n           # low-order DM number of actuators
    # -- calculated variables ---
 
    mask=makeMask(radii,nSubAps)
@@ -379,17 +533,17 @@ if __name__=="__main__":
    slopeV=numpy.dot( gM, directTestPhase ) # make slopes, the input
 
    # make DMs
-   dm={'ho':dm.dm(gO.n_,[hodmN]*2,maskPupilDMOversized),
-       'lo':dm.dm(gO.n_,[lodmN]*2,maskPupilDMOversized) }
+   dm={'ho':dm.dm(gO.n_,[hodmN]*2,maskPupilDMOversized,ifScl=0.5),
+       'lo':dm.dm(gO.n_,[lodmN]*2,maskPupilDMOversized,ifScl=0.5) }
 
    pokeM=formPokeMatrices()
    stackedPMX=concatenatePokeMatrices(dm,dmOrder)
 
    # >>> The following three lines show how to use the function
    # >>>
-   reconT=( reconTypes[reconTypeIdx],lambds[reconTypeIdx] ) # configure
+   reconT=( reconTypeIdx,lambds[reconTypeIdx] ) # configure
    reconMs=makeReconstructors([reconT], stackedPMX, dm, dmOrder, showSteps=1)
-   reconM=reconMs[reconTypes[reconTypeIdx]]['rmx'] # retrieve
+   reconM=reconMs[reconTypeIdx]['rmx'] # retrieve
    # >>>
    # >>> (ends)
 
@@ -413,6 +567,7 @@ if __name__=="__main__":
       # \/ for visualisation
    ipVs={'ho':reconPhaseVs['ho'], 'lo':reconPhaseVs['lo'],
           'ipphase':directTestPhase }
+   print("reconPhaseVs & directTestPhase:")
    vizAs={}
    for key in ipVs:
       ipVs[key]-=ipVs[key].mean()
@@ -421,4 +576,16 @@ if __name__=="__main__":
       thisA=numpy.ma.masked_array( thisA, (gO.illuminatedCorners==0) ) 
       vizAs[key]=thisA-thisA.mean() 
 
-   doPlotsAndPrints(vizAs,ipVs,doPlotting)
+   doPlotsAndPrintsViz(vizAs,ipVs,doPlotting)
+   
+   ipVs={'ho':actuatorVs['ho'], 'lo':actuatorVs['lo']}
+   print("actuatorVs:")
+   vizAs={}
+   for key in ipVs:
+      thisA=numpy.zeros(dm[key].actGeom)
+      thisA.ravel()[dm[key].usableIdx]=ipVs[key]
+      thisA=numpy.ma.masked_array( thisA,
+            numpy.array(dm[key].usable).reshape(dm[key].actGeom)==0 ) 
+      vizAs[key]=thisA-thisA.mean() 
+
+   doPlotsAndPrintsAct(vizAs,ipVs,doPlotting)
