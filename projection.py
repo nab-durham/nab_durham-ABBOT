@@ -146,8 +146,10 @@ class geometry(object):
             for thisPM in self.pupilMasks ]
       self.define()
 
-   def define(self):
+   def define(self, centrePixelBoundary=False ):
       '''Define projection geometry.
+      If centrePixelBoundary is True then force the centre projection to be
+      aligned to a pixel boundary.
       '''
       # calculate the x,y offsets of the projected aperture on the layers
       # including the central projection
@@ -172,7 +174,13 @@ class geometry(object):
       self.maxMinSizes=numpy.array([
             self.cornerCoordinates[:,:,0].max(axis=1),
             self.cornerCoordinates[:,:,1].min(axis=1) ])
-         # To place a mask into the array, the vector from the corner of
+      if centrePixelBoundary:
+            # Simple solution since the centre projection is, by definition,
+            # pixel boundary aligned if the max/min sizes are integers: easiest
+            # to do this via rounding both so that it is even/fair
+         for i,thisFn in enumerate((head,floor)):
+            self.maxMinSizes[i] = thisFn(self.maxMinSizes[i])
+         # \/ To place a mask into the array, the vector from the corner of
          # a mask to the corner of the array is required.
          # Everything is known except the corner of the array to the
          # centre of the layer vector, so calculate this now.
@@ -184,7 +192,7 @@ class geometry(object):
          # also compute the size of the layer too
       expectedLayerNpix=numpy.ceil( (self.maxMinSizes[0]-self.maxMinSizes[1])
                                  ).astype(numpy.int32)
-      if self.layerNpix==None:
+      if self.layerNpix is None:
          self.layerNpix=expectedLayerNpix
       elif self.layerNpix.shape!=(self.nLayers,2):
          raise ValueError("Wrong layerNpix shape")

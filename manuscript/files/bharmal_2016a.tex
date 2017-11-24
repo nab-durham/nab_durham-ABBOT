@@ -1,9 +1,10 @@
-\documentclass[9pt,twocolumn,twoside]{osajnl}
+\documentclass{scrartcl}
 
-\journal{ol}
+%\documentclass[9pt,twocolumn,twoside]{osajnl}
 
-\setboolean{shortarticle}{true}
+%\journal{ol}
 
+%\setboolean{shortarticle}{true}
 \usepackage{amssymb}
 \usepackage{tabulary}
 \usepackage{graphicx}
@@ -11,41 +12,42 @@
 
 \DeclareGraphicsExtensions{.pdf,.png,.jpg}
 
-\title{Investigating the separation of multiple-,identical-conjugate deformable mirror control commands}
-
-\author[1,*]{Nazim Ali Bharmal}
-\author[1]{Alastair G Basden}
-\author[1]{C Marc Dubbeldam}
-\author[1]{Nicol\'{a}s S Dubost}
-\author[1]{Colin N Dunlop}
-\author[1]{Daniel A H\"{o}lck}
-\author[2]{Yonghui Liang}
-\author[1]{Richard M Myers}
-\author[1,2]{Huizhe Yang}
-\author[1]{Edward J Younger}
-
-\affil[1]{Centre for Advanced Instrumentation, Department of Physics, University of Durham, Science Laboratories, South Road, Durham DH1 3LE, United Kingdom}
-\affil[2]{National University of Defense Technology,...,Changsha, China}
-\affil[*]{Corresponding author: n.a.bharmal@durham.ac.uk} 
-\dates{Compiled \today}
-
-\setboolean{displaycopyright}{true}
-
-\begin{abstract}
-Deformable mirrors used to correct optical aberrations often have individual limitations, which can be overcome by using two or more conjugated to the same plane. Such an arrangement with two mirrors is often refered to as woofer--tweeter and this work investigates experimentally how to split or otherwise share the wavefront modification space available to the multiple mirrors. The approach is to use a general laboratory adaptive optics experiment to investigate several algorithms that control two mirrors. Our assumptions include commanding the mirrors at identical update rates, hence temporal effects are disregarded.
-\todo{more}
-\end{abstract}
-
-\ociscodes{}%(110.1080) Active or Adaptive Optics; (110.4280) Noise in imaging systems; (110.3925) Metrics}
-
-\doi{\url{http://dx.doi.org/10.1364/ol.XX.XXXXXX}}
-
-
 \begin{document}
+\title{Investigating the control of multiple,identical conjugate deformable mirrors}
+
+%\author[1,*]{Nazim Ali Bharmal}
+%\author[1]{Alastair G Basden}
+%\author[1]{C Marc Dubbeldam}
+%\author[1]{Nicol\'{a}s S Dubost}
+%\author[1]{Colin N Dunlop}
+%\author[1]{Daniel A H\"{o}lck}
+%\author[2]{Yonghui Liang}
+%\author[1]{Richard M Myers}
+%\author[1,2]{Huizhe Yang}
+%\author[1]{Edward J Younger}
+%
+%\affil[1]{Centre for Advanced Instrumentation, Department of Physics, University of Durham, Science Laboratories, South Road, Durham DH1 3LE, United Kingdom}
+%\affil[2]{National University of Defense Technology,...,Changsha, China}
+%\affil[*]{Corresponding author: n.a.bharmal@durham.ac.uk} 
+%\dates{Compiled \today}
+
+%\setboolean{displaycopyright}{true}
+
+%\ociscodes{}%(110.1080) Active or Adaptive Optics; (110.4280) Noise in imaging systems; (110.3925) Metrics}
+
+%\doi{\url{http://dx.doi.org/10.1364/ol.XX.XXXXXX}}
+
+
+%\begin{document}
 
 \maketitle
-\thispagestyle{fancy}
-\ifthenelse{\boolean{shortarticle}}{\abscontent}{}
+
+\abstract{
+Deformable mirrors used to correct optical aberrations often have individual limitations, which can be overcome by using two or more conjugated to the same plane. Such an arrangement with two mirrors is often refered to as woofer--tweeter and this work investigates experimentally how to split or otherwise share the wavefront modification space available to the multiple mirrors. The approach is to use a general laboratory adaptive optics experiment to investigate several algorithms that control two mirrors. Our assumptions include commanding the mirrors at identical update rates, hence temporal effects are disregarded.
+}
+
+%\thispagestyle{fancy}
+%\ifthenelse{\boolean{shortarticle}}{\abscontent}{}
 
 %\section{Introduction}
 

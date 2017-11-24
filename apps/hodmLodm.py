@@ -18,6 +18,7 @@ class knownReconstructors:
    DIAGONALREGLN = "Diagonal-regularized"
    LOWORDERPNLZTN = "Low-order-penalization"
    HOPMXPNLZTN = "High-order-PMX_penalization"
+   HOPMXPNLZTNTHY = "High-order-PMX_penalization_theory"
    PMXFLTRNG = "PMX_filtering"
 
 knownReconstructorsList = [ vars(knownReconstructors)[ip]
@@ -77,6 +78,7 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
             }
 
       elif reconType==knownReconstructors.LOWORDERPNLZTN:
+         print("\n\t*WARNING*:this method has a bug, excess waffle/high-frequency terms incorrectly regularized\n")
          lodmN=dm['lo'].actGeom[0]
          hodmN=dm['ho'].actGeom[0]
          filterM=numpy.zeros(
@@ -115,14 +117,17 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
                   modeCounter+=1
          fTfM=filterM.T.dot(filterM)
          sTsM=stackedPMX.T.dot(stackedPMX)
+         tikhonovRegM=numpy.identity(dmLength)
          reconMs[reconType]={\
-               'rmx':numpy.linalg.pinv( sTsM+lambd[0]*fTfM).dot(stackedPMX.T),
+               'rmx':numpy.linalg.pinv( 
+                        sTsM+lambd[0]*fTfM+tikhonovRegM*lambd[2]
+                                           ).dot( stackedPMX.T ),
                'filterM':filterM,
                'lambd0':lambd[0],
                'lambd1':lambd[1],
             }
       #
-      elif reconType==knownReconstructors.HOPMXPNLZTN:
+      elif reconType==knownReconstructors.HOPMXPNLZTNTHY:
          from abbot.projection import projection
          from abbot.gradientOperator import gradientOperatorType1
          ap,gO={},{}
@@ -171,11 +176,44 @@ def makeReconstructors(reconTypes, stackedPMX, dm, dmOrder,
          if dmOrder[0]=='lo':
 ##            normalization = stackedPMX[nActs['lo']:].ptp()/0.25
             filterM[:,nActs['lo']:] = avgM##.dot(gM_ho*normalization)
-            tikhonovRegM[:nActs['lo'],:nActs['lo']]*=0
          else:
 ##            normalization = stackedPMX[:nActs['ho']].ptp()/0.25
             filterM[:,:nActs['ho']] = avgM##.dot(gM_ho*normalization)
-            tikhonovRegM[nActs['ho']:,nActs['ho']:]*=0
+         
+         fTfM=filterM.T.dot(filterM)
+         sTsM=stackedPMX.T.dot(stackedPMX)
+         reconMs[reconType]={\
+               'rmx':numpy.linalg.inv(
+                        sTsM+lambd[0]*fTfM+tikhonovRegM*lambd[1] 
+                     ).dot(stackedPMX.T),
+               'filterM':filterM,
+               'lambd0':lambd[0],
+               'lambd1':lambd[1],
+            }
+      #
+      elif reconType==knownReconstructors.HOPMXPNLZTN:
+         from abbot.projection import projection
+         from abbot.gradientOperator import gradientOperatorType1
+         ap,gO={},{}
+         nSubaps,nActs={},{}
+         # \/ geometry
+         for tap in ['lo','ho']:
+            nActs[tap]    = sum(dm[tap].usable)
+
+         hoPMX=numpy.empty(stackedPMX.shape,numpy.float32)
+         if dmOrder[0]=='lo':
+            hoPMX[:,:nActs['lo']] = 0
+            hoPMX[:,nActs['lo']:] = stackedPMX[:,nActs['lo']:]
+            loPMX = stackedPMX[:,:nActs['lo']]
+         else:
+            hoPMX[:,nActs['ho']:] = 0
+            hoPMX[:,:nActs['ho']] = stackedPMX[:,:nActs['ho']]
+            loPMX = stackedPMX[:,nActs['ho']:]
+
+         loPMX_i = numpy.linalg.pinv( loPMX, lambd[2] )
+         filterM = loPMX_i.dot( hoPMX )
+
+         tikhonovRegM=numpy.identity( nActs['ho']+nActs['lo'] )
          
          fTfM=filterM.T.dot(filterM)
          sTsM=stackedPMX.T.dot(stackedPMX)
@@ -367,7 +405,7 @@ if __name__=="__main__":
       return stackPokeM
 
 
-   def doPlotsAndPrintsViz(vizAs, ipVs, doPlotting=True):
+   def doPlotsAndPrintsViz(vizAs, ipVs, doPlotting, nReps, reconPhaseVsds):
       if doPlotting: import matplotlib.pyplot as pyp
       import string
       if doPlotting: pyp.figure(1)
@@ -408,7 +446,6 @@ if __name__=="__main__":
                   string.rjust("s.d. of",15)
                ))
       #
-      print(" "+"-"*70)
       if doPlotting:
          pyp.figure(2)
          pyp.xlabel("phase index (0...nPoints-1)")
@@ -418,8 +455,27 @@ if __name__=="__main__":
          pyp.plot([0,dmLength-1],[ipVs['ho'].min()]*2,'k--',lw=1,alpha=0.5)
          pyp.plot([0,dmLength-1],[ipVs['ho'].max()]*2,'k--',lw=1,alpha=0.5)
          pyp.show()
+
+      if nReps<5:
+         print(" (insufficient repetitions {} for statistics)".format(nReps) )
+      else:
+         for dmType in 'ho','lo','resid':
+            for fn in 'mean','std':
+               opCmd = "numpy.{0:s}(reconPhaseVsds['{1:s}'])".format(fn,dmType)
+               op=eval(opCmd)
+               if fn=='mean':
+                  opPrefixSuffix="<",">"
+               elif fn=='std':
+                  opPrefixSuffix="\sigma_{","}"
+               print("{2:s} {0:s} = {1:5.3f}".format(
+                     string.ljust("{0:s}".format( dmType ),30),
+                     op,
+                     string.rjust(
+                       "{0[0]:s}s.d.{0[1]:s}".format(opPrefixSuffix),30)
+                  ))
+      print(" "+"-"*70)
    
-   def doPlotsAndPrintsAct(vizAs, ipVs, doPlotting=True):
+   def doPlotsAndPrintsAct(vizAs, ipVs, doPlotting, nReps, actuatorVsds):
       if doPlotting: import matplotlib.pyplot as pyp
       import string
       print(" "+"=-"*35)
@@ -457,7 +513,6 @@ if __name__=="__main__":
                   string.rjust("s.d. of",15)
                ))
       #
-      print(" "+"-="*35)
       if doPlotting:
          pyp.figure(4)
          pyp.xlabel("actuator index (0...nPoints-1)")
@@ -471,6 +526,25 @@ if __name__=="__main__":
                   [ipVs[k].max()]*2,c+'--',lw=1,alpha=0.5)
          pyp.show()
 
+      if nReps<5:
+         print(" (insufficient repetitions {} for statistics)".format(nReps) )
+      else:
+         for dmType in 'ho','lo':
+            for fn in 'mean','std':
+               opCmd = "numpy.{0:s}(actuatorVsds['{1:s}'])".format(fn,dmType)
+               op=eval(opCmd)
+               if fn=='mean':
+                  opPrefixSuffix="<",">"
+               elif fn=='std':
+                  opPrefixSuffix="\sigma_{","}"
+               print("{2:s} {0:s} = {1:5.3f}".format(
+                     string.ljust("{0:s}".format( dmType ),30),
+                     op,
+                     string.rjust(
+                       "{0[0]:s}s.d.{0[1]:s}".format(opPrefixSuffix),30)
+                  ))
+      print(" "+"-="*35)
+
 #  =========================================================================
 
    # \/ regularization parameters
@@ -478,8 +552,9 @@ if __name__=="__main__":
          "SVD_only"                    :(0.0001,),
          "Inv+Tik"                     :(0.0001,),
          "Diagonal-regularized"        :(0.01,0.0001),
-         "Low-order-penalization"      :(0.01,3.0),
-         "High-order-PMX_penalization" :(100,0.0001),
+         "Low-order-penalization"      :(0.01,3.0,0.001),
+         "High-order-PMX_penalization_theory" :(0.1,0.0001),
+         "High-order-PMX_penalization" :(0.1,0.0001,1e-2),
          "PMX_filtering"               :(1e-6,0.001)
       }
    assert numpy.std([ lk in knownReconstructorsList for lk in lambds ]
@@ -503,6 +578,12 @@ if __name__=="__main__":
          help='Outer radius', type=float, default=1 )
    parser.add_argument('-r',
          help='Inner radius', type=float, default=0.2 )
+   parser.add_argument('-g',
+         help='HO gain', type=float, default=1.0 )
+   parser.add_argument('-#',
+         help='Number of reps', type=int, default=1 )
+   parser.add_argument('-S',
+         help='SNR', type=float, default=None )
    args=parser.parse_args(sys.argv[1:])
    #
    # -- variables --
@@ -519,6 +600,9 @@ if __name__=="__main__":
    nSubAps=scaling-1      # number of sub-apertures
    hodmN=args.N           # high-order DM number of actuators i.e. Fried geom.
    lodmN=args.n           # low-order DM number of actuators
+   hodmG=args.g           # high-order DM gain (just a multiplicative factor)
+   nReps=args.__getattribute__("#")
+   SNR=args.S             # SNR
    # -- calculated variables ---
 
    mask=makeMask(radii,nSubAps)
@@ -528,9 +612,6 @@ if __name__=="__main__":
    # form the gradient operator class and the operator matrix
    gO=gradientOperator.gradientOperatorType1( mask )
    gM=gO.returnOp()
-   
-   directTestPhase=generateTestPhase(gO,nSubAps/32.0,nSubAps+1) # test phase
-   slopeV=numpy.dot( gM, directTestPhase ) # make slopes, the input
 
    # make DMs
    dm={'ho':dm.dm(gO.n_,[hodmN]*2,maskPupilDMOversized,ifScl=0.5),
@@ -542,29 +623,57 @@ if __name__=="__main__":
    # >>> The following three lines show how to use the function
    # >>>
    reconT=( reconTypeIdx,lambds[reconTypeIdx] ) # configure
+   print("Using reconstructor: {0:s}".format(reconT))
    reconMs=makeReconstructors([reconT], stackedPMX, dm, dmOrder, showSteps=1)
    reconM=reconMs[reconTypeIdx]['rmx'] # retrieve
    # >>>
    # >>> (ends)
 
    # -- test code logic begins --
-   print("Using reconstructor: {0:s}".format(reconT))
 
-      # generate actuator vector, split, and reconstruct DM surfaces
-   actuatorV=numpy.dot( reconM, slopeV )
-   actuatorVs={'lo':actuatorV[0:sum(dm[dmOrder[0]].usable)],
-               'ho':actuatorV[sum(dm[dmOrder[0]].usable)
-         :sum(dm[dmOrder[0]].usable)+sum(dm[dmOrder[1]].usable)]}
-   
-   reconPhaseVs={}
-   for dmType in actuatorVs.keys():
-      reconPhaseVs[dmType]=numpy.zeros([gO.numberPhases],numpy.float64)
-      for j,actVal in enumerate(actuatorVs[dmType]):
-         reconPhaseVs[dmType]+=(
-               (dm[dmType].poke(dm[dmType].usableIdx[j])*actVal).take(
-                     gO.illuminatedCornersIdx) )
+   actuatorVsds,reconPhaseVsds = [
+         {'ho':[],'lo':[]},
+         {'ho':[],'lo':[],'resid':[]} ]
+   noise=0
+   print()
+   printDot(True, "[ ")
+   for repN in range(nReps):
+         # generate phase->slopes->actuator vec->split->
+      directTestPhase=generateTestPhase(gO,nSubAps/32.0,nSubAps+1) # test phase
+      slopeV=numpy.dot( gM, directTestPhase ) # make slopes, the input
+      if SNR is not None: # replace with actual noise
+         if noise is 0: 
+            signal=slopeV.std()
+         noise=numpy.random.normal( 0, signal*SNR**-1.0, size=len(slopeV) )
+      slopeV+=noise
+      actuatorV=numpy.dot( reconM, slopeV )
+      actuatorVs={'lo':actuatorV[0:sum(dm[dmOrder[0]].usable)],
+                  'ho':actuatorV[sum(dm[dmOrder[0]].usable)
+            :sum(dm[dmOrder[0]].usable)+sum(dm[dmOrder[1]].usable)]}
+      actuatorVs['ho']*=hodmG
+      printDot(True)
 
-      # \/ for visualisation
+
+         # ->reconstruct DM surfaces
+      reconPhaseVs={}
+      for dmType in actuatorVs.keys():
+         reconPhaseVs[dmType]=numpy.zeros([gO.numberPhases],numpy.float64)
+         for j,actVal in enumerate(actuatorVs[dmType]):
+            reconPhaseVs[dmType]+=(
+                  (dm[dmType].poke(dm[dmType].usableIdx[j])*actVal).take(
+                        gO.illuminatedCornersIdx) )
+
+         actuatorVsds[dmType].append( actuatorVs[dmType].std() )
+         reconPhaseVsds[dmType].append( reconPhaseVs[dmType].std() )
+
+      reconPhaseVsds['resid'].append(
+            (reconPhaseVs['lo']+reconPhaseVs['ho']-directTestPhase).std()
+         )
+      
+   printDot(True," ]")
+   print()
+
+      # \/ for visualisation, just the last iterration
    ipVs={'ho':reconPhaseVs['ho'], 'lo':reconPhaseVs['lo'],
           'ipphase':directTestPhase }
    print("reconPhaseVs & directTestPhase:")
@@ -576,7 +685,7 @@ if __name__=="__main__":
       thisA=numpy.ma.masked_array( thisA, (gO.illuminatedCorners==0) ) 
       vizAs[key]=thisA-thisA.mean() 
 
-   doPlotsAndPrintsViz(vizAs,ipVs,doPlotting)
+   doPlotsAndPrintsViz(vizAs,ipVs,doPlotting, nReps,reconPhaseVsds)
    
    ipVs={'ho':actuatorVs['ho'], 'lo':actuatorVs['lo']}
    print("actuatorVs:")
@@ -588,4 +697,5 @@ if __name__=="__main__":
             numpy.array(dm[key].usable).reshape(dm[key].actGeom)==0 ) 
       vizAs[key]=thisA-thisA.mean() 
 
-   doPlotsAndPrintsAct(vizAs,ipVs,doPlotting)
+   doPlotsAndPrintsAct(vizAs,ipVs,doPlotting,nReps,actuatorVsds)
+
