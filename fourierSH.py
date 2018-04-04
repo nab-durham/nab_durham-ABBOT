@@ -244,7 +244,8 @@ class FourierShackHartmann(object):
             for l in range(self.N): # vertical
                for m in range(self.N): # horizontal
                   cornerCoords = map( lambda v :
-                       (self.sapxls)*(0.5+v+(max(self.wls)-twl)//self.binning//2)+
+                       (self.sapxls)*int(
+                           0.5+v+(max(self.wls)-twl)//self.binning//2)+
                        (self.guardPixels*v), (l,m)
                      )
                   canvas[i, cornerCoords[0]:cornerCoords[0]+width,
