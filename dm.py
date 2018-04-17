@@ -6,31 +6,46 @@ import numpy
 
 
 class dm(object):
-   rotator=lambda self,x_y,ang : (
-      numpy.cos(ang/180.*numpy.pi)*(x_y[0]-self.npix[0]/2.)
-         -numpy.sin(ang/180.*numpy.pi)*(x_y[1]-self.npix[1]/2.)+self.npix[0]/2.,
-      numpy.sin(ang/180.*numpy.pi)*(x_y[0]-self.npix[0]/2.)
-         +numpy.cos(ang/180.*numpy.pi)*(x_y[1]-self.npix[1]/2.)+self.npix[1]/2. 
-         )
+   def __rotator__(self,x_y,ang,relLoc):
+      rx,ry=[ self.npix[i]/2.0-relLoc[i]*self.actspacing[i]
+            for i in (0,1) ]
+      nx=( numpy.cos(ang/180.*numpy.pi)*(x_y[0]-rx)
+          -numpy.sin(ang/180.*numpy.pi)*(x_y[1]-ry)+rx )
+      ny=( numpy.sin(ang/180.*numpy.pi)*(x_y[0]-rx)
+          +numpy.cos(ang/180.*numpy.pi)*(x_y[1]-ry)+ry )
+      print(x_y,(nx,ny))
+      return( nx,ny )
 
-   def __init__(self, shape, actGeom, mask=None, rotation=0, within=0, ifScl=1,
-         lateralScl=[1,1], lateralOffset=[0,0]):
+   def __init__(self, shape, actGeom, mask=None, rotation=0, rotationLoc=(0,0),
+            within=0, ifScl=1, lateralScl=[1,1], lateralOffset=[0,0]):
       '''npix (i) : is the sampling for the DM surface,
          actGeom (i,i) : represents the actuator geometry,
          mask [bool;array;2D] : the pupil mask, so can calculate which 
              actuators have a signifcant effect, in the sampling geometry,
-         rotation (f) : degrees,
-         within (b) : whether to let influence functions go over the edge,
-         ifScl (f) : scaling factor for the influence fn width,
-         lateralScl (f,f) : actuator spacing along axes relative to the
-            actuator grid, not the output axes,
-         lateralOffset (f,f) : is a relative factor of actuator spacing for
-            shifting the actuator grid.
+         rotation (f) : rotation [degrees, not radians],
+         rotationLoc (f,f) : rotation position (relative to NAG),
+         (within (b) : *REDUNDANT*
+               whether to let influence functions go over the edge,)0
+         ifScl (f) : scaling factor for the influence fn width (relative to
+               NAG),
+         lateralScl (f,f) : actuator spacing along axes (relative to NAG),
+         lateralOffset (f,f) : actuator displacement (relative to NAG),
+
+         There is a nominal actuator grid (NAG) which is based on the actuator
+         geometry spaced equally given the number of actuators and the number
+         of pixels specified, in each direction.  The positions of the
+         actuators are then assumed relative to the centre of the pixels and
+         transformed according to (in order),
+
+         (0. centre-aligned coordinates ;)
+         1. shift (lateralOffset) coordinates ;
+         2. scale (lateralScl) coordinates ;
+         3. rotate (rotation) coordinates, relative to offset (rotationLoc).
       '''
       self.npix=shape
       self.actGeom=actGeom
       self.nacts=actGeom[0]*actGeom[1]
-      self.rotation=rotation
+      self.rotation, self.rotationLoc=rotation, rotationLoc
       self.within=within # now redundant
       if self.within!=0: print("WARNING: within is a redundant option, will be removed")
       self.ifScl=ifScl
@@ -66,7 +81,7 @@ class dm(object):
             self.usable.append( self.mask[maskY,maskX] )
       if self.rotation!=0:
          for i in range(self.nacts):
-            self.actCds[i]=self.rotator(self.actCds[i],self.rotation)
+            self.actCds[i]=self.__rotator__(self.actCds[i],self.rotation,self.rotationLoc)
 
       self.usableIdx=numpy.flatnonzero(numpy.array(self.usable))
 

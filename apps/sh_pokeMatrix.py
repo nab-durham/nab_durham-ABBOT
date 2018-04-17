@@ -40,10 +40,11 @@ dmSize=[(N+1)*subApS]*2  # how big (in pixels) is the DM
 dmRot=0#(0.5*N**-1.0)*(1/3.14159*180) # in degrees
 dmOffset=(0.,0.) # actuator spacing units
 dmSpacing=[(N+1)]*2 # how many actuators (configuration)
-dmScaling=(1+N**-1.0,1+N**-1.0) # how the DM is magnified relative to the actuator scale
+dmScaling=(1,1)#(1+N**-1.0,1+N**-1.0) # how the DM is magnified relative to the actuator scale
 allActuators = 0 # poke all actuators regardless of whether illuminated?
 obscurationD = 0 # fraction of pupil diameter
 ifScl = 0.50 # size of influence function
+dmRotLoc = (0,0)#N/2,N/2)
 ##
 ## ---- variables end ----------------------------
 ##
@@ -105,9 +106,10 @@ apMask=( reshaper(aperture).sum(axis=-1).sum(axis=-1)
 apIdx=apMask.ravel().nonzero()[0]
 
 # \/ configure and setup a DM object
-dm = abbot.dm.dm(dmSize,dmSpacing,rotation=dmRot,within=0, ifScl=ifScl,
+dm = abbot.dm.dm(dmSize,dmSpacing,rotation=dmRot, ifScl=ifScl,
       lateralScl = dmScaling,
-      lateralOffset = dmOffset ) #[ 0.5*-(subApS%2)*subApS**-1.0, 0] )
+      lateralOffset = dmOffset,
+      rotationLoc = dmRotLoc ) #[ 0.5*-(subApS%2)*subApS**-1.0, 0] )
 
 # \/ configure and setup a fourier Shack-Hartmann object
 nPix = subApS*N
@@ -160,15 +162,15 @@ print("Maximum DM actuator distance from centre (relative)={:f}".format(
 print("Acceptable tolerance={:f}".format(N**-1.0))
 
 #   # \/ total poked surface
-#pokeSurfaces = [ dmFitter(size,dm.poke(j),dm) for j in dmActIdx[::2] ]
-#pokedSurface = numpy.sum( pokeSurfaces, axis=0 )
-#pylab.figure(2)
-#pylab.subplot(1,2,1)
-#pylab.imshow( pokedSurface*aperture )
-#pylab.title( "inside" )
-#pylab.subplot(1,2,2)
-#pylab.imshow( pokedSurface*(1-aperture) )
-#pylab.title( "outside" )
+pokeSurfaces = [ dmFitter(size,dm.poke(j),dm) for j in dmActIdx[::2] ]
+pokedSurface = numpy.sum( pokeSurfaces, axis=0 )
+pylab.figure(2)
+pylab.subplot(1,2,1)
+pylab.imshow( pokedSurface*aperture )
+pylab.title( "inside" )
+pylab.subplot(1,2,2)
+pylab.imshow( pokedSurface*(1-aperture) )
+pylab.title( "outside" )
 #
 #   # \/ variance of the slope signal per poked actuator
 #pylab.figure(3)
