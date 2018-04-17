@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import print_function
 # What is this?
 # Form interaction matrices based on a SH model and a DM model, with the ability
@@ -32,12 +33,17 @@ def _plotFractionalBar(frac,char='#',length=70,
 ## ---- variables begin --------------------------
 ##
 numpy.random.seed(18071977)
-N=15
+N=8
 subApS=2
 fftScl=1
 dmSize=[(N+1)*subApS]*2  # how big (in pixels) is the DM
-dmRot=13.00
+dmRot=0#(0.5*N**-1.0)*(1/3.14159*180) # in degrees
+dmOffset=(0.,0.) # actuator spacing units
 dmSpacing=[(N+1)]*2 # how many actuators (configuration)
+dmScaling=(1+N**-1.0,1+N**-1.0) # how the DM is magnified relative to the actuator scale
+allActuators = 0 # poke all actuators regardless of whether illuminated?
+obscurationD = 0 # fraction of pupil diameter
+ifScl = 0.50 # size of influence function
 ##
 ## ---- variables end ----------------------------
 ##
@@ -57,46 +63,10 @@ reshaper=lambda ip :\
       ip.reshape([N,subApS,N,subApS]).swapaxes(1,2)
 
 def getGrads(apWf, oldWay=True, extraData=None):
-#(redundant)   if oldWay: # generally, this is deprecated
-#(redundant)      # \/ ----- begin setup -----------------------
-#(redundant)      cds=numpy.arange(fftScl*subApS)-(fftScl*subApS-1)/2.0
-#(redundant)      corrCds=numpy.arange(subApS)-(subApS-1)/2.0
-#(redundant)      fftCorr=ei(-numpy.pi*(fftScl*subApS)**-1.0*numpy.add.outer(corrCds,corrCds)
-#(redundant)            ).reshape([1,1]+[subApS]*2) # reuse cds
-#(redundant)         # \/ a difference of 1 between the edges of the sub-aperture
-#(redundant)         # = 1/subApS*(x) = 2*pi/(fftScl*subApS)*(fftScl)/2/pi*(x)
-#(redundant)         # so movement is then fftScl/2/pi of a pixel
-#(redundant)      expectedGradGain=4 #fftScl/2/numpy.pi
-#(redundant)      # /\ ----- end -------------------------------
-#(redundant)      
-#(redundant)      # \/ ----- begin creating spots --------------
-#(redundant)      focalP = numpy.fft.fftshift (abs(numpy.fft.fft2(
-#(redundant)            fftCorr*reshaper(aperture*ei(apWf*2*numpy.pi/1.0))
-#(redundant)               ,s=[subApS*fftScl]*2 ))**2.0) * (fftScl*subApS)**-2.0
-#(redundant)      focalP=focalP.reshape([-1]+[subApS*fftScl]*2).take(apIdx,axis=0)
-#(redundant)      # /\ ----- end -------------------------------
-#(redundant)      
-#(redundant)      # \/ ----- begin creating gradients ----------
-#(redundant)      gradsV = numpy.array(
-#(redundant)            [ (focalP*cds.reshape(tShape)).sum(axis=-1).sum(axis=-1)
-#(redundant)               /(focalP.sum(axis=-1).sum(axis=-1))
-#(redundant)              for tShape in ([1,-1],[-1,1]) 
-#(redundant)            ]
-#(redundant)         ).ravel()*expectedGradGain**-1.0
-#(redundant)      # /\ ----- end -------------------------------
-#(redundant)   else:
-#(redundant)      ( cntr, refslopes, slopeScaling ) = extraData
-   if not oldWay:
-##      imgs = fourierSH.makeSHImgs( aperture, apWf, N, mag=fftScl,
-##            lazyTruncate=1, binning=1,
-##            guardPixels=1 if (aperture.shape[0]/N)==2 else 0,
-##            radialExtension=0 )
-##      gradsV = fourierSH.getSlopes( imgs, cntr, apIdx, refslopes, slopeScaling)
-      fSH.makeImgs( apWf, aperture )
-      gradsV = fSH.getSlopes()
-      focalP = fSH.lastSHImage.swapaxes(1,2).reshape([subApS*N]*2).copy()
-   else:
-      raise ImplementationError("DISABLED")
+   if oldWay: raise ImplementationError("DISABLED")
+   fSH.makeImgs( apWf, aperture )
+   gradsV = fSH.getSlopes()
+   focalP = fSH.lastSHImage.swapaxes(1,2).reshape([subApS*N]*2).copy()
 
    return(gradsV,focalP)
 
@@ -123,54 +93,46 @@ def dmFitter(size,dmSfc,dm):
 
 assert not dmSize is None, "dmSize cannot be None in this code"
 
-oldWay = False
+oldWay = False # always set this to be False
+if oldWay: raise ImplementationError("Not supported")
 extraData = []
 size=N*subApS
 aperture = Zernike.anyZernike(1,size,size//2)
-aperture-= Zernike.anyZernike(1,size,size//2*(1.2/4.2))
+if obscurationD>0:
+   aperture-= Zernike.anyZernike(1,size,size//2*obscurationD)
 apMask=( reshaper(aperture).sum(axis=-1).sum(axis=-1) 
             > (0.5*(subApS)**2) ).astype(numpy.bool)
 apIdx=apMask.ravel().nonzero()[0]
 
-#(redundant)gO=abbot.gradientOperator.gradientOperatorType1(apMask)
-#(redundant)gM=gO.returnOp()
-#(redundant)reconM=numpy.dot(
-#(redundant)   numpy.linalg.inv( numpy.dot( gM.T, gM )+1e-3*numpy.identity(gO.numberPhases) ), gM.T )
-
-#ifScl = 0.5*(N*min(dmSpacing)**-1.0)**0.5
-ifScl = 0.60
+# \/ configure and setup a DM object
 dm = abbot.dm.dm(dmSize,dmSpacing,rotation=dmRot,within=0, ifScl=ifScl,
-      lateralOffset = [ 0.5*-(subApS%2)*subApS**-1.0, 0] )
+      lateralScl = dmScaling,
+      lateralOffset = dmOffset ) #[ 0.5*-(subApS%2)*subApS**-1.0, 0] )
 
-if not oldWay:
-##      cntr = fourierSH.makeCntrArr( subApS )
-      nPix = subApS*N
-      binning = 1
-      LT = 1
-      GP = 0
-      radialExtension = 0
-      #
-##      ( slopeScaling, reconScalingFactor, tiltFac, refslopes )=\
-##            fourierSH.calibrateSHmodel( aperture, cntr, nPix, N, fftScl, apIdx,
-##                  [0,], binning, LT, GP, radialExtension 
-##               )
-      #
-##      extraData = ( cntr, refslopes, slopeScaling )
-      fSH = fourierSH.FourierShackHartmann( N, aperture, 0.5, 1, binning,
-            [0,], LT, GP, radialExtension
-         )
-      extraData = fSH # this is a compatibility variable, later remove it
+# \/ configure and setup a fourier Shack-Hartmann object
+nPix = subApS*N
+binning = 1 # don't bin
+LT = 1 # lazy-truncation (fast)
+GP = 0 # guard-pixels (none)
+radialExtension = 0
+magnification = 1
+illumFraction = 0.5
+fSH = fourierSH.FourierShackHartmann( N, aperture, illumFraction,
+      magnification, binning, [0,], LT, GP, radialExtension
+   )
 
-if dmRot==0 or 1==1:
-   # \/ only works with the assumption that the DM is aligned with the WFS
+# \/ Setup actuators to poke
+if allActuators:
+   dmActIdx=dm.usableIdx
+else:
+   # \/ assumption: DM-WFS are relatively well aligned 
    dmActIdx=(Zernike.anyZernike( 1,
          max(dmSpacing), 
          min(dmSpacing)/2,
          ratio=max(dmSpacing)*min(dmSpacing)**-1.0
       )!=0).ravel().nonzero()[0]
-else:
-   raise RuntimeError("Not implemented")
 
+# \/ Generate interaction matrix
 print("INTERACTION MATRIX GENERATION::") ; sys.stdout.flush()
 pokeM=[]
 for i,actNo in enumerate( dmActIdx ):
@@ -180,12 +142,10 @@ for i,actNo in enumerate( dmActIdx ):
 
 print()
 
-## Below is the analysis
-##
-#
+# \/ Analysis
 import pylab
 pylab.figure(1)
-pylab.imshow( pokeM, aspect='auto' )
+pylab.imshow( pokeM, aspect='auto', cmap='gray' )
 
    # \/ location of DM actuator coordinates, relative to the centre of the
    #   array
@@ -199,19 +159,19 @@ print("Maximum DM actuator distance from centre (relative)={:f}".format(
       max(dmActDistanceFromCentre)*2.0/size ))
 print("Acceptable tolerance={:f}".format(N**-1.0))
 
-   # \/ total poked surface
-pokeSurfaces = [ dmFitter(size,dm.poke(j),dm) for j in dmActIdx[::2] ]
-pokedSurface = numpy.sum( pokeSurfaces, axis=0 )
-pylab.figure(2)
-pylab.subplot(1,2,1)
-pylab.imshow( pokedSurface*aperture )
-pylab.title( "inside" )
-pylab.subplot(1,2,2)
-pylab.imshow( pokedSurface*(1-aperture) )
-pylab.title( "outside" )
-
-   # \/ variance of the slope signal per poked actuator
-pylab.figure(3)
-pylab.plot( numpy.var( pokeM, axis=1 ) )
-pylab.title( "Variance of slope signal" )
-pylab.xlabel( "DM actuators, order of those poked" )
+#   # \/ total poked surface
+#pokeSurfaces = [ dmFitter(size,dm.poke(j),dm) for j in dmActIdx[::2] ]
+#pokedSurface = numpy.sum( pokeSurfaces, axis=0 )
+#pylab.figure(2)
+#pylab.subplot(1,2,1)
+#pylab.imshow( pokedSurface*aperture )
+#pylab.title( "inside" )
+#pylab.subplot(1,2,2)
+#pylab.imshow( pokedSurface*(1-aperture) )
+#pylab.title( "outside" )
+#
+#   # \/ variance of the slope signal per poked actuator
+#pylab.figure(3)
+#pylab.plot( numpy.var( pokeM, axis=1 ) )
+#pylab.title( "Variance of slope signal" )
+#pylab.xlabel( "DM actuators, order of those poked" )
