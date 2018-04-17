@@ -31,7 +31,8 @@ class dm(object):
       self.actGeom=actGeom
       self.nacts=actGeom[0]*actGeom[1]
       self.rotation=rotation
-      self.within=within
+      self.within=within # now redundant
+      if self.within!=0: print("WARNING: within is a redundant option, will be removed")
       self.ifScl=ifScl
       self.mask=mask
       self.lateralScl=lateralScl
@@ -48,10 +49,8 @@ class dm(object):
    def coords(self):
       self.actCds=[]
       self.usable = numpy.ones(self.nacts) if self.mask is None else []
-#      offset=[ (
-#            self.actGeom[i]+(self.within!=0)-1)/2. for i in (0,1)]
-      self.actspacing=[ self.lateralScl[i]*self.npix[i]/float(
-               self.actGeom[i]+(self.within!=0)) for i in (0,1) ]
+      self.actspacing=[ self.lateralScl[i]*self.npix[i]/float(self.actGeom[i])
+            for i in (0,1) ]
       for i in range(self.nacts):
          (x,y)=(
             i//self.actGeom[1]-(self.actGeom[1]-1)/2.0-self.lateralOffset[1],

@@ -41,7 +41,7 @@ print("[")
 print(" : ")
 for j in range(1,int(nfft/nspan)):
    subPupil=Zernike.anyZernike(1,nfft,1,
-         offset=[0,-nfft/2+2+j*nspan])[nfft/2-3:nfft/2+3]
+         offset=[0,-nfft/2+2+j*nspan])[nfft/2-3:nfft/2+3].astype('i')
    subPupils.append(numpy.flatnonzero(subPupil.ravel()))
    pupilMask+=subPupil
    print(".",end="") ; sys.stdout.flush()
