@@ -24,6 +24,13 @@ def cds(N, roll=False):
    tcds = (numpy.arange(0,N)-(N/2.-0.5))*(N/2.0)**-1.0
    return tcds if not roll else numpy.fft.fftshift(tcds)
 
+def circle(N,fractionalRadius=1):
+   '''for N pixels, return a 2D array which has a circle (1 within, 0
+   without) and radius a fraction of N.
+   '''
+   return numpy.add.outer(
+         cds(N)**2,cds(N)**2 )<(fractionalRadius**2)
+
 def makeTiltPhase(nPix, fac):
    return -fac*numpy.pi/nPix*numpy.add.outer(
          numpy.arange(nPix),
@@ -343,12 +350,6 @@ class FourierShackHartmann(object):
 
 
 if __name__=="__main__":
-   def circle(N,fractionalRadius=1):
-      '''for N pixels, return a 2D array which has a circle (1 within, 0
-      without) and radius a fraction of N.
-      '''
-      return numpy.add.outer(
-            cds(N)**2,cds(N)**2 )<(fractionalRadius**2)
 
    def doFourierShackHartmannObject( N, pupilAp, illuminationFraction, mag,
          binning, defWls, LT, GP, radialExtension
