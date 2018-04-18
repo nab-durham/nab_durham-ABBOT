@@ -13,7 +13,7 @@ class dm(object):
           -numpy.sin(ang/180.*numpy.pi)*(x_y[1]-ry)+rx )
       ny=( numpy.sin(ang/180.*numpy.pi)*(x_y[0]-rx)
           +numpy.cos(ang/180.*numpy.pi)*(x_y[1]-ry)+ry )
-      print(x_y,(nx,ny))
+#      print(x_y,(nx,ny))
       return( nx,ny )
 
    def __init__(self, shape, actGeom, mask=None, rotation=0, rotationLoc=(0,0),
