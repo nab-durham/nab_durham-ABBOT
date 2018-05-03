@@ -148,8 +148,9 @@ class FourierShackHartmann(object):
       cntr=[ numpy.add.outer( linearComponent, numpy.zeros(P)) ]
       cntr.append( cntr[0].T )
       
-      # create an appropriate shape for multiplication with an array of
+      # Create an appropriate shape for multiplication with an array of
       # sub-aperture pixels for each of the two directions
+      # Centroid along second axis (''x'') and then the first (''y'')
       self.cntr = numpy.array(cntr).T.reshape([1,1,P,P,2])
       #
       return self
@@ -274,6 +275,9 @@ class FourierShackHartmann(object):
    def getSlopes( self ):
       '''Based on the last image produced, and the calibrations, estimate
       the slopes using a CoG algorithm.
+      Order is all the slopes along the second axis, and then all the slopes
+      along the first. This is (visually) equivalent to x-slopes and then
+      y-slopes, if indices run along the x-direction (column-then-row order).
       '''
       rawSlopes=(
             (self.cntr*
