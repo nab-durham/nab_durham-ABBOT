@@ -111,20 +111,20 @@ if __name__=='__main__':
    ## ---- variables begin --------------------------
    ##
    numpy.random.seed(18071977)
-   N=6
+   N=4
    subApS=2
    fftScl=1
    dmSize=[(N+1)*subApS]*2  # how big (in pixels) is the DM
-   dmRot=60.123#(1*N**-1.0)*(1/3.14159*180) # in degrees
-   dmOffset=(0.0,0.0) # actuator spacing units
+   dmRot=0.1#(1*N**-1.0)*(1/3.14159*180) # in degrees
+   dmOffset=(0.0123,0.3412) # actuator spacing units
    dmSpacing=[(N+1)]*2 # how many actuators (configuration)
    dmScaling=(1,1)#(1bb**-1.0,1+N**-1.0) # how the DM is magnified relative to the actuator scale
-   allActuators = 0 # poke all actuators regardless of whether illuminated?
+   allActuators = 1 # poke all actuators regardless of whether illuminated?
    obscurationR = 0 # fraction of pupil radius 
    ifScl = 0.50 # size of influence function
    dmRotLoc = (0,0)#N/2,N/2)
    SHbinning = 1 # 1=don't bin
-   SHillumFraction = 0.5
+   SHillumFraction = 0.0
    ##
    ## ---- variables end ----------------------------
    ##
@@ -148,7 +148,7 @@ if __name__=='__main__':
 
    extraData = [] # REDUNDANT, value irrelevant
    size=N*subApS # pixels for DM/WFS representation
-   aperture = fourierSH.circle(size)
+   aperture = numpy.ones([size]*2)#fourierSH.circle(size)
    if obscurationR>0:
        aperture-= fourierSH.circle(size,obscurationR)
    # \/ Setup actuators to poke
