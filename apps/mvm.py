@@ -123,14 +123,14 @@ except numpy.linalg.LinAlgError as exceptionErr:
 # three reconstructor matrices
 reconM=[]
 for thisInvM in (invgTgMVMM, invgTgM, invgTgSVDM):
-   if thisInvM!=None:
+   if not thisInvM is None:
       reconM.append( numpy.dot( thisInvM, gM.transpose() ) )
    else: 
       reconM.append( None )
       
 reconPhaseV=[]
 for thisRM in reconM:
-   if thisRM!=None:
+   if thisRM is not None:
       reconPhaseV.append( numpy.dot( thisRM, gradV ) )
    else:      
       reconPhaseV.append(None)
@@ -138,7 +138,7 @@ for thisRM in reconM:
 # imaging of phases
 reconPhaseD=[] 
 for i in range(3):
-   if reconM[i]==None: 
+   if reconM[i] is None: 
       reconPhaseD.append(None)
    else:
       thisPhaseD=numpy.zeros((nfft+1)**2,numpy.float64)
@@ -163,7 +163,7 @@ pg.imshow( reconPhaseD[0]-onePhaseD, interpolation='nearest', origin='lower',
 pg.title("diff (MVM.)")
 pg.colorbar()
 pg.subplot(235)
-if reconM[1]!=None:
+if not reconM[1] is None:
    pg.imshow( reconPhaseD[1]-onePhaseD, interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
    pg.title("diff (No reg.)")
@@ -171,7 +171,7 @@ if reconM[1]!=None:
 else:
    pg.text(0.1,0.1,"Inv failed")
 pg.subplot(236)
-if reconM[2]!=None:
+if reconM[2] is not None:
    pg.imshow( reconPhaseD[2]-onePhaseD, interpolation='nearest', origin='lower',
       extent=[-1.5,nfft+0.5,-1.5,nfft+0.5] )
    pg.title("diff (SVD)")
@@ -182,9 +182,9 @@ else:
 # remnant variances
 print("input var=",onePhaseD.var())
 print("input-recon (MVM.) var=\t",(reconPhaseD[0]-onePhaseD).var())
-if reconM[1]!=None:
+if reconM[1] is not None:
    print("input-recon (No reg.) var=\t",(reconPhaseD[1]-onePhaseD).var())
-if reconM[2]!=None:
+if reconM[2] is not None:
    print("input-recon (SVD) var=\t",(reconPhaseD[2]-onePhaseD).var())
 
 # waffle operator
@@ -192,9 +192,9 @@ waffleO=gradientOperator.waffleOperatorType1(pupilMask)
 waffleV=waffleO.returnOp()
 print("waffle input amp=\t",numpy.dot(onePhaseV, waffleV))
 print("waffle recon (MVM.) amp=\t",numpy.dot(reconPhaseV[0], waffleV))
-if reconM[1]!=None:
+if not reconM[1] is None:
    print("waffle recon (No reg.) amp=\t",numpy.dot(reconPhaseV[1], waffleV))
-if reconM[2]!=None:
+if not reconM[2] is None:
    print("waffle recon (SVD) amp=\t",numpy.dot(reconPhaseV[2], waffleV))
 
 for dat in (
