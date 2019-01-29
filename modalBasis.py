@@ -7,7 +7,11 @@ Currently based on Zernike-like forms and sinusoidal-like forms.
 from __future__ import print_function
 import gradientOperator
 import numpy
-from exceptions import NotImplementedError
+import sys
+if sys.version_info.major is 2:
+   from exceptions import NotImplementedError # Py2k
+else:
+   pass # Py3k
 
 class modalBasis(gradientOperator.geometryType1):
    '''Calculate modal basis based on type 1 geometry.
@@ -73,8 +77,8 @@ class polySinRadAziBasisType1(modalBasis):
    def calculatemodalFunctions(self, orthonormalize=True ,verbose=False):
       self.modalFunctions=[]
       for tr in self.radialPowers:
-         for ta in xrange(tr%2,min(len(self.angularPowers),tr+1),2):
-            for tt in xrange(1+(ta>0)*1):
+         for ta in range(tr%2,min(len(self.angularPowers),tr+1),2): # Py3k
+            for tt in range(1+(ta>0)*1): # Py3k
                if verbose: print(tr,ta,tt)
                self.modalFunctions.append(self.modalFunction(tr,ta,tt))
       self.modalFunctions=numpy.array(self.modalFunctions)

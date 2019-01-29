@@ -13,7 +13,7 @@ import gradientOperator
 import numpy
 import version
 
-def quadrantFractions( (v,h),s, stopOnFailure=True ):
+def quadrantFractions( posn, s, stopOnFailure=True ):
    '''For given central vertical & horizontal coordinate and the scale,
    what are the pixel weightings that contribute. Assume at least 2 in each
    direction, although there may be more.
@@ -21,6 +21,7 @@ def quadrantFractions( (v,h),s, stopOnFailure=True ):
    Their relative offsets are
    (0,0),(+1,0),(0,+1),(+1,+1).
    '''
+   v,h=posn # Py3k
    v0,h0=int(floor( v-s/2.+0.5 )),int(floor( h-s/2.+0.5 ))
       # \/ note we round to 4 dp to ensure sensible fractions
       #  which does mean the addition isn't necessarily to s^2
@@ -28,10 +29,10 @@ def quadrantFractions( (v,h),s, stopOnFailure=True ):
    # check against {v0+n-0.5,v0+n+0.5 [n->{0,max(s+1,2)}] }
    # also ensure pixel hasn't slipped off the edge of this pixel
    fracs=[] ; rcs=[]
-   for iv in range(numpy.where( s<=1, 2, head(s+1) )):
+   for iv in range(numpy.where( s<=1, 2, int(head(s+1)) )):
       vf=min( 0.5,max(v+s/2.-(v0+iv),-0.5) )-max( -0.5,v-s/2.-(v0+iv) )
       if (numpy.round(vf,4)):
-         for ih in range(numpy.where( s<=1, 2, head(s+1) )):
+         for ih in range(numpy.where( s<=1, 2, int(head(s+1)) )):
             hf=min( 0.5,max(h+s/2.-(h0+ih),-0.5) )-max( -0.5,h-s/2.-(h0+ih) )
             if (numpy.round(hf*vf,4)>0): # have to check both
                rcs.append([iv,ih])
@@ -123,10 +124,11 @@ class geometry(object):
                   len(self.starHeights),self.nAzi+1 ))
       # need at least 10% of the guidestar altitude between the final layer and
       # it \/
-      if max(self.starHeights[:-1])!=None:
+      maxStarHeights=max(map(lambda i:-1 if i is None else i, self.starHeights)) # Py3k
+      if maxStarHeights>0:
          starHeightMinDistance=0.1 
          if 1-self.layerHeights[-1]/(
-                  max(self.starHeights[:-1])/starHeightMinDistance
+                  maxStarHeights/starHeightMinDistance
                )<starHeightMinDistance:
             raise ValueError("Must have the guide star at a higher altitude")
       self.pixelScales=[pixelScales]*self.nAzi if\

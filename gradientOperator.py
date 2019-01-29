@@ -4,7 +4,7 @@ Also define a geometry class that is generally useful.
 """
 
 import numpy
-import types
+#import types # Py3k
 
 # Hardy, 1998, p.270 for configurations
 # Type 1 = Fried
@@ -20,8 +20,8 @@ class geometryType1:
    numberPhases=None
 
    def __init__( self, subapMask=None, pupilMask=None ):
-      if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
-      if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
+      if not subapMask is None: self.newSubaperturesGiven(subapMask)
+      if not pupilMask is None: self.newPupilGiven(pupilMask)
 
    def newSubaperturesGiven(self, subapMask):
       self.numberSubaps=int(subapMask.sum()) # =n**2 for all illuminated
