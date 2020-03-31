@@ -83,7 +83,7 @@ class gradientOperatorType1(geometryType1):
       geometryType1.__init__(self, subapMask, pupilMask)
 
    def returnOp(self):
-      if self.numberSubaps==None: return None
+      if self.numberSubaps is None: return None
       self.calcOp()
       return self.op
 
@@ -285,8 +285,8 @@ class gradientOperatorType2(gradientOperatorType1):
 
 
    def returnOp(self):
-      if self.numberXSubaps==None: return None
-      if self.op!=None: return self.op
+      if self.numberXSubaps is None: return None
+      if self.op is not None: return self.op
       self.calcOp()
       return self.op
 
@@ -611,7 +611,7 @@ def genericCalcOp(operator):
    for i in range(self.numberPhases):
       valid=self.locFn(i)
       for j in range(len(self.stencil)):
-         if valid[j].shape[0]==1 and self.stencil[j]!=None:
+         if valid[j].shape[0]==1 and self.stencil[j] is not None:
             row.append(i) ; col.append(valid[j][0])
             data.append(self.stencil[j])
    if self.sparse:
