@@ -5,8 +5,8 @@ Also define a geometry class that is generally useful.
 
 import numpy
 import types
-import sys
-pyVers = sys.version_info
+import sys                
+pyVers = sys.version_info 
 # Hardy, 1998, p.270 for configurations
 # Type 1 = Fried
 #      2 = Hudgin
