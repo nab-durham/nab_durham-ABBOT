@@ -5,7 +5,8 @@ Also define a geometry class that is generally useful.
 
 import numpy
 import types
-
+import sys
+pyVers = sys.version_info
 # Hardy, 1998, p.270 for configurations
 # Type 1 = Fried
 #      2 = Hudgin
@@ -20,8 +21,12 @@ class geometryType1:
    numberPhases=None
 
    def __init__( self, subapMask=None, pupilMask=None ):
-      if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
-      if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
+      if pyVers[0] == 2:
+        if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
+        if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
+      elif pyVers[0] == 3:
+        if subapMask is not None: self.newSubaperturesGiven(subapMask)
+        if pupilMask is not None: self.newPupilGiven(pupilMask)
 
    def newSubaperturesGiven(self, subapMask):
       self.numberSubaps=int(subapMask.sum()) # =n**2 for all illuminated
