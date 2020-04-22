@@ -168,22 +168,25 @@ def covarianceDirectOneSpacing( dist, r0, L0=None ):
    else:
       raise NotImplemented("Not implemented for Kolmogorov")
 
-def covarianceDirectRegular( nfft, r0, L0=None ):
+def covarianceDirectRegular( nfft, r0, L0=None, offset=[0,0] ):
    '''nfft=either # of points in a square grid or dimensions of rectagle
       r0=Fried length in pixels
+      offset=the centre of the covariance calculations as an offset in array elements
    
-    Calculate the covariance of one point, centred about zero, regularly
+    Calculate the covariance of one point, centred about `offset`, regularly
     spaced.
     '''
 
    if L0:
 # FIXME:- change the following line to better test for a sequence
+# FIXME:- check that offset is compatible
       if "__len__" in dir(type(nfft)):
-         ra=numpy.roll( numpy.arange(2*nfft[0])-nfft[0],nfft[0] ) # twice as big
-         rb=numpy.roll( numpy.arange(2*nfft[1])-nfft[1],nfft[1] )
+         ra=numpy.roll( numpy.arange(2*nfft[0])-nfft[0]-offset[0],nfft[0] ) # twice as big
+         rb=numpy.roll( numpy.arange(2*nfft[1])-nfft[1]-offset[1],nfft[1] )
       else:
-         ra=numpy.roll( numpy.arange(2*nfft)-nfft,nfft )
-         rb=ra
+         ra=numpy.roll( numpy.arange(2*nfft)-nfft-offset[0],nfft )
+         rb=numpy.roll( numpy.arange(2*nfft)-nfft-offset[1],nfft )
+#         rb=ra
       r=numpy.add.outer(ra**2,rb**2)**0.5
       return covarianceDirectOneSpacing( r,r0,L0 )
    else:
@@ -247,7 +250,7 @@ def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
       "Size mismatch between one-point covariance and mask"
    covM = covarianceMatrix( Mask )
       # \/ recentre covariances
-   covCent = [ (thisDim)/2 for thisDim in covS ]
+   covCent = [ (thisDim)//2 for thisDim in covS ] # Py3k
    for axis in (0,1):
       SinglePhaseCovariance=numpy.roll(
          SinglePhaseCovariance,covCent[axis], axis=axis)
