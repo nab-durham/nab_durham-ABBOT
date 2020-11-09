@@ -21,8 +21,6 @@ class geometryType1:
    numberPhases=None
 
    def __init__( self, subapMask=None, pupilMask=None ):
-      if not subapMask is None: self.newSubaperturesGiven(subapMask)
-      if not pupilMask is None: self.newPupilGiven(pupilMask)
       if pyVers[0] == 2:
         if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
         if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
