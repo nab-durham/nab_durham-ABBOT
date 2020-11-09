@@ -105,7 +105,7 @@ class FourierShackHartmann(object):
       self.nPix = self.aperture.shape[0]
       self.illuminationFraction = illuminationFraction
       #
-      sapxls=map(lambda s : int(numpy.ceil(s*N**-1.0)), aperture.shape)
+      sapxls=list(map(lambda s : int(numpy.ceil(s*N**-1.0)), aperture.shape))
       assert len(sapxls)==2 and sapxls[0]==sapxls[1], "Require a square, for now"
       self.sapxls = sapxls[0]
       self._makeCntrArr(self.sapxls//self.resampling)
@@ -230,8 +230,8 @@ class FourierShackHartmann(object):
          # algorithm: truncate each image to the size of the sub-aperture
          #  and compute an average
          for ( i,twl ) in enumerate( self.wls ):
-            idx = ( (self.sapxls*self.mag)/2 + twl//self.binning/2 )+\
-                  numpy.arange( -self.sapxls/2, self.sapxls/2 )
+            idx = ( (self.sapxls*self.mag)//2 + twl//self.binning//2 )+\
+                  numpy.arange( -self.sapxls//2, self.sapxls//2 )
             polyChromSHImgs[i] =\
                   polyChromSHImgs[i].take(idx,axis=2).take(idx,axis=3)
          self.lastSHImage = numpy.mean( polyChromSHImgs, axis=0 )
