@@ -4,8 +4,9 @@ Also define a geometry class that is generally useful.
 """
 
 import numpy
-#import types # Py3k
-
+import types
+import sys                
+pyVers = sys.version_info 
 # Hardy, 1998, p.270 for configurations
 # Type 1 = Fried
 #      2 = Hudgin
@@ -22,6 +23,12 @@ class geometryType1:
    def __init__( self, subapMask=None, pupilMask=None ):
       if not subapMask is None: self.newSubaperturesGiven(subapMask)
       if not pupilMask is None: self.newPupilGiven(pupilMask)
+      if pyVers[0] == 2:
+        if type(subapMask)!=types.NoneType: self.newSubaperturesGiven(subapMask)
+        if type(pupilMask)!=types.NoneType: self.newPupilGiven(pupilMask)
+      elif pyVers[0] == 3:
+        if subapMask is not None: self.newSubaperturesGiven(subapMask)
+        if pupilMask is not None: self.newPupilGiven(pupilMask)
 
    def newSubaperturesGiven(self, subapMask):
       self.numberSubaps=int(subapMask.sum()) # =n**2 for all illuminated
@@ -78,7 +85,7 @@ class gradientOperatorType1(geometryType1):
       geometryType1.__init__(self, subapMask, pupilMask)
 
    def returnOp(self):
-      if self.numberSubaps==None: return None
+      if self.numberSubaps is None: return None
       self.calcOp()
       return self.op
 
@@ -280,8 +287,8 @@ class gradientOperatorType2(gradientOperatorType1):
 
 
    def returnOp(self):
-      if self.numberXSubaps==None: return None
-      if self.op!=None: return self.op
+      if self.numberXSubaps is None: return None
+      if self.op is not None: return self.op
       self.calcOp()
       return self.op
 
@@ -606,7 +613,7 @@ def genericCalcOp(operator):
    for i in range(self.numberPhases):
       valid=self.locFn(i)
       for j in range(len(self.stencil)):
-         if valid[j].shape[0]==1 and self.stencil[j]!=None:
+         if valid[j].shape[0]==1 and self.stencil[j] is not None:
             row.append(i) ; col.append(valid[j][0])
             data.append(self.stencil[j])
    if self.sparse:
