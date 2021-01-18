@@ -234,13 +234,13 @@ class covarianceMatrix(numpy.ndarray):
 
 
 def covarianceMatrixFillInRegular( SinglePhaseCovariance ):
-   '''Calculate a regularly spaced covariance matrix given a regularly spaced
-   single point covariance'''
-   maskShape=[ thisShape/2 for thisShape in SinglePhaseCovariance.shape ]
-   return covarianceMatrixFillInMasked(
-         SinglePhaseCovariance, 
-         numpy.ones( maskShape, numpy.bool )
-      )
+    '''Calculate a regularly spaced covariance matrix given a regularly 
+    spaced single point covariance'''
+    maskShape=[ thisShape//2 for thisShape in SinglePhaseCovariance.shape ]
+    return covarianceMatrixFillInMasked(
+             SinglePhaseCovariance, 
+             numpy.ones( maskShape, numpy.bool )
+        )
 
 def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
    '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.'''
