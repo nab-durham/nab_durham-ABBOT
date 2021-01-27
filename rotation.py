@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """ABBOT : Generate slope rotation operator, based off gradientOperatorType1.
 """
 
@@ -222,6 +223,133 @@ class slopeRotationScipyOperator(__slopeRotationOperator__,rotationScipyOperator
     wavefront rotation operator using the scipy.ndimage.rotation function.'''
     def __init__(self, angle=None, subapMask=None, pupilMask=None, sparse=False):
         __slopeRotationOperator__.__init__(self, angle, subapMask, pupilMask, sparse)
-        rotationExplicitOperator.__init__(self, angle, subapMask, pupilMask, sparse)
         rotationScipyOperator.__init__(self, angle, subapMask, pupilMask, sparse)
         self.rotM=rotationScipyOperator.returnOp(self, angle)
+
+class affineScipyOperator(rotationScipyOperator):
+    '''From the affine transform of points via scipy.ndimage.affine_transform,
+    generate a wavefront affine transform operator matrix.
+    The function notes state:
+       Given an output image pixel index vector o, the pixel value is determined from the input image at position np.dot(matrix, o) + offset.
+
+This does ‘pull’ (or ‘backward’) resampling, transforming the output space to the input to locate data. Affine transformations are often described in the ‘push’ (or ‘forward’) direction, transforming input to output. If you have a matrix for the ‘push’ transformation, use its inverse (numpy.linalg.inv) in this function.
+    (https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.affine_transform.html)
+    '''
+
+    def __init__(self, translate=[0,0], scale=[1,1], shear=[0,0], angle=0, subapMask=None, pupilMask=None, sparse=False, order=1, prefilter=False):
+        '''The parameters for the affine transform are,
+        translate=[0,0], [x,y], [sample resolution],
+        scale=[1,1], [x,y] [sample resolution],
+        shear=[0,0], [x,y] [sample resolution],
+        angle=0, [degrees counter-clockwise],
+        and,
+        order=1, spline interpolation (1=linear),
+        prefilter=False, pre-filtering prior to spine interpolatioon (not reqd. for order=1)
+        '''
+        __rotationOperator__.__init__(self,angle,subapMask,pupilMask,sparse)
+        from scipy.ndimage import affine_transform
+        # build the matrix which operates as follows,
+        # 1,rotation,
+        # 2,scale,
+        # 3,translate
+        # unsure about shear but think it is between 2 and 3.
+        self.affine_mx=zeros([2,2],float64)
+        self.affine_mx[0,0]=(scale[1])*cos( deg2rad(angle))
+        self.affine_mx[0,1]=(scale[0])*sin( deg2rad(angle))+(-shear[0])
+        self.affine_mx[1,0]=(scale[1])*sin(-deg2rad(angle))+(-shear[1])
+        self.affine_mx[1,1]=(scale[0])*cos( deg2rad(angle))
+        self.affine_offset=array(self.n_-self.affine_mx.dot(self.n_))/2.0 # rotate about centre
+        self.affine_offset-=array(translate)[::-1] # X,Y -> Y,X
+        self.affine=lambda ip : affine_transform(
+                ip, self.affine_mx, self.affine_offset, order=order, mode='constant',
+                cval=0, prefilter=prefilter 
+            )
+
+    def _calcIndices(self):
+        indices=[]
+        tfmd_pokes_full=[ self.affine(self.pokes[i]) for i in range(self.numberPhases) ]
+        ##
+        for i,ci in enumerate(self.illuminatedCornersIdx):
+            pairs=[]
+            this_tfm_poke=tfmd_pokes_full[i].ravel().take(self.illuminatedCornersIdx)
+            for j in flatnonzero(this_tfm_poke):
+                indices.append([i,j,this_tfm_poke[j]])
+        return(indices)
+
+class slopeAffineScipyOperator(__slopeRotationOperator__,affineScipyOperator):
+    '''Using Type 1 geometry, generate an affine transform matrix from a
+    wavefront rotation operator using the scipy.ndimage.affine_transform function.'''
+    def __init__(self, translate=[0,0], scale=[1,1], shear=[0,0], angle=0, subapMask=None, pupilMask=None, sparse=False, order=1, prefilter=False):
+        __slopeRotationOperator__.__init__(self, angle, subapMask, pupilMask, sparse)
+        affineScipyOperator.__init__(self, translate, scale, shear, angle, subapMask, pupilMask, sparse, order, prefilter)
+        self.rotM=affineScipyOperator.returnOp(self)
+
+
+if __name__=='__main__':
+    #
+    # for future unittest compatibility, use assert statements in this test code
+    #
+    def test_rotation(ip,success,failure):
+# RE-WRITE ME...         global thisProj,layerExM,sumPrM,sumLayerExM
+# RE-WRITE ME...         (nAzi,gsHeight,mask)=ip
+# RE-WRITE ME...         (thisProj,layerExM,layerExUTM,sumPrM,sumCentPrM,sumLayerExM,layerCentExM,
+# RE-WRITE ME...             sumLayerCentExM)={},{},{},{},{},{},{},{}
+# RE-WRITE ME...         ...
+# RE-WRITE ME...         # TEST: basic matrices comparison between sparse and dense
+# RE-WRITE ME...         try:
+# RE-WRITE ME...             assert ( numpy.array( layerExM[1].todense() )-layerExM[0] ).var()==0,\
+# RE-WRITE ME...                 "layerExM sparse!=dense"
+# RE-WRITE ME...         except:
+# RE-WRITE ME...             failure+=1
+# RE-WRITE ME...             print(sys.exc_info()[1])
+# RE-WRITE ME...         else:
+# RE-WRITE ME...             success+=1
+# RE-WRITE ME...         try:
+# RE-WRITE ME...             assert (numpy.array(layerCentExM[1].todense())-layerCentExM[0]
+# RE-WRITE ME...                     ).var()==0, "layerExM sparse!=dense"
+# RE-WRITE ME...         except:
+# RE-WRITE ME...             failure+=1
+# RE-WRITE ME...             print(sys.exc_info()[1])
+# RE-WRITE ME...         else:
+# RE-WRITE ME...             success+=1
+# RE-WRITE ME...         # TEST: input means 
+# RE-WRITE ME...         tilts=lambda s : numpy.add.outer(
+# RE-WRITE ME...                 numpy.arange(-s[0]/2,s[0]/2),
+# RE-WRITE ME...                 numpy.arange(-s[1]/2,s[1]/2) )
+# RE-WRITE ME...         quadratic=lambda s : numpy.add.outer(
+# RE-WRITE ME...                 numpy.arange(-s[0]/2,s[0]/2)**2.0,
+# RE-WRITE ME...                 numpy.arange(-s[1]/2,s[1]/2)**2.0 )
+# RE-WRITE ME...         ...
+# RE-WRITE ME...         try:
+# RE-WRITE ME...             test=(ipProjV[0]-ipProjV[1]).var()
+# RE-WRITE ME...             assert test<1e-10, "ipProjV, var{sparse-dense}>1e-10:"+str(test)
+# RE-WRITE ME...         except:
+# RE-WRITE ME...             failure+=1
+# RE-WRITE ME...             print(sys.exc_info()[1])
+# RE-WRITE ME...         else:
+# RE-WRITE ME...             success+=1
+        #
+        return success,failure
+
+    import datetime, sys, numpy
+    success,failure=0,0
+    titleStr="rotation.py, automated testing"
+    print("\n{0:s}\n{1:s}\n".format(titleStr,len(titleStr)*"^"))
+    print("BEGINS:"+str(datetime.datetime.now()))
+    #
+    rad=10 # note, array pixels
+#     nAzi=5
+#     gsHeight=3 # note, unitless
+    #
+    circ = lambda b,r : (numpy.add.outer(
+            (numpy.arange(b)-(b-1.0)/2.0)**2.0,
+            (numpy.arange(b)-(b-1.0)/2.0)**2.0 )**0.5<=r).astype( numpy.int32 )
+    mask=circ(rad,rad/2)-circ(rad,rad/2*0.25)
+    #
+    success,failure=test_rotation([None],success,failure)
+    total=success+failure
+    succeeded,failed=success,failure
+    print("SUMMARY:rotation: {0:d}->{1:d} successes and {2:d} failures".format(
+            total, succeeded, failed))
+    print("ENDS:"+str(datetime.datetime.now()))
+    sys.exit( failed>0 )
