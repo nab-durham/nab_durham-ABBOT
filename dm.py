@@ -5,6 +5,26 @@ from __future__ import print_function
 import numpy
 
 
+def arrayFitter(size,ip):
+    '''Take the DM object, a surface representing the DM, and the size to fit
+    the surface onto.
+    Returns the fitted surface to the specified size.
+    '''
+	npix=numpy.array(ip).shape
+	assert len(npix)==2, "Only valid for 2D input"
+	assert len(size)==2, "Only valid for 2D size"
+    if tuple(npix)==tuple(size):
+        return ip
+    if npix[0]>size[0]:
+        ip=ip[npix[0]//2-size[0]//2:npix[0]//2-size[0]//2+size[0],:]
+    if npix[1]>size:
+        ip=ip[:,npix[1]//2-size[1]//2:npix[1]//2-size[1]//2+size[1]]
+    #
+    op = numpy.zeros( size, ip.dtype )
+    op[size[0]//2-ip.shape[0]//2:size[0]//2-ip.shape[0]//2+ip.shape[0],
+       size[1]//2-ip.shape[1]//2:size[1]//2-ip.shape[1]//2+ip.shape[1]]=ip
+    return( op ) 
+
 class dm(object):
    def __rotator__(self,x_y,ang,relLoc):
       rx,ry=[ self.npix[i]/2.0-relLoc[i]*self.actspacing[i]
