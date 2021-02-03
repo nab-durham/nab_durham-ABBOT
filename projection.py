@@ -60,7 +60,7 @@ class geometry(object):
 
     def __init__(self, layerHeights, zenAngles, azAngles, pupilMasks,
             starHeights=None, pixelScales=1, layerNpix=None, raiseWarnings=True,
-            centrePixelBoundary=False ):
+            centrePixelBoundary=False, rotations=None ):
         '''Layer heights in [metres],
             angles in [radians],
             Equal no. of zenAngles and azAngles required.
@@ -73,6 +73,9 @@ class geometry(object):
                 (so it can be different, but need not be)
             centrePixelBoundary is Boolean: centres the central projection on a
                 pixel boundary which can be helpful.
+            rotations [] is either None or a list with length equal to number of zenAngles
+            with the rotation relative to the central projection, or rotations for every
+            projection including the central (last one).
         '''
         self.raiseWarnings=raiseWarnings # whether to halt or try to carry on
         self.nAzi=len(azAngles)
@@ -80,6 +83,7 @@ class geometry(object):
         self.layerHeights=layerHeights
         self.zenAngles=zenAngles
         self.azAngles=azAngles
+        self.rotations=rotations
         self.pupilMasks=([pupilMasks]*(self.nAzi+1) if (
                 type(pupilMasks)==numpy.ndarray and len(pupilMasks.shape)==2)
             else pupilMasks)
@@ -149,6 +153,14 @@ class geometry(object):
         self.maskIdxs=[ numpy.array(thisPM).ravel().nonzero()[0]
                 for thisPM in self.pupilMasks ]
         self.define(centrePixelBoundary)
+        if rotations is None:
+            self.rotations=[0]*self.nAzi
+        if not len(self.rotations) in [ self.nAzi,self.nAzi+1 ]:
+            raise ValueError("Wrong number of rotations, "+
+                    " got {0:d} but expected {1:d}".format(
+                        len(self.rotations),self.nAzi ))
+        self.rotations=list(self.rotations)+(
+                [0] if len(self.rotations)==self.nAzi else [])
 
     def define(self, centrePixelBoundary=False ):
         '''Define projection geometry.
@@ -234,7 +246,16 @@ class geometry(object):
                 ])*self._hs(layer,azi)\
                 +( self._hs(layer,azi)-1 )/2.0\
                 +self.layerMaskCorners[layer,azi].reshape([2,1])
-
+        # need a rotation transform here,
+        c,s=numpy.cos(self.rotations[azi]*numpy.pi/180),\
+            numpy.sin(self.rotations[azi]*numpy.pi/180)
+        amx=numpy.array([[c,s],[-s,c]]) # reverse rotation
+        cntr=\
+          numpy.array(self.npixs[azi]).reshape([2,1])/2.0*self._hs(layer,azi)\
+                +( self._hs(layer,azi)-1 )/2.0\
+                +self.layerMaskCorners[layer,azi].reshape([2,1])
+        self.maskCoords=amx.dot(self.maskCoords-cntr)+cntr
+        
         indices=[] ; fractions=[]
         for i in range(self.maskIdxs[azi].shape[0]):
             rcs,fracs,v0,h0=quadrantFractions( self.maskCoords.T[i],
