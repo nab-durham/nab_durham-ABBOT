@@ -230,6 +230,7 @@ class covarianceMatrix(numpy.ndarray):
       obj = numpy.ndarray.__new__( self, shapeFromMask ).view(
              covarianceMatrix )
       obj.mask,obj.maskI = mask, maskI
+      obj.illuminatedNo = illuminatedNo
       return( obj )
 
 
@@ -243,28 +244,51 @@ def covarianceMatrixFillInRegular( SinglePhaseCovariance ):
         )
 
 def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):
-   '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.'''
-   covS=SinglePhaseCovariance.shape
-   maskS=Mask.shape
-   assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
+    '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.'''
+    covS=SinglePhaseCovariance.shape
+    maskS=Mask.shape
+    assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
       "Size mismatch between one-point covariance and mask"
-   covM = covarianceMatrix( Mask )
+    covM = covarianceMatrix( Mask )
       # \/ recentre covariances
-   covCent = [ (thisDim)//2 for thisDim in covS ] # Py3k
-   for axis in (0,1):
-      SinglePhaseCovariance=numpy.roll(
-         SinglePhaseCovariance,covCent[axis], axis=axis)
+    covCent = [ (thisDim)//2 for thisDim in covS ] # Py3k
+    for axis in (0,1):
+        SinglePhaseCovariance=numpy.roll(
+           SinglePhaseCovariance,covCent[axis], axis=axis)
       # \/ copy covariances
-   for i,maskIdx in enumerate( covM.maskI ):
-      maskPos=( maskIdx//maskS[1],maskIdx%maskS[1] )
-         # \/ 1. remove the correctly placed and sized region
-      covSlice=SinglePhaseCovariance[
-         covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
-         covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
-            ]
-         # \/ 1. convert to 1D and apply mask
-      covM[i] = covSlice.ravel()[covM.maskI]
-   return covM 
+    for i,maskIdx in enumerate( covM.maskI ):
+        maskPos=( maskIdx//maskS[0],maskIdx%maskS[0] )
+           # \/ 1. remove the correctly placed and sized region
+        covSlice=SinglePhaseCovariance[
+           covCent[0]-maskPos[0]:covCent[0]-maskPos[0]+maskS[0],
+           covCent[1]-maskPos[1]:covCent[1]-maskPos[1]+maskS[1]
+              ]
+           # \/ 1. convert to 1D and apply mask
+        covM[i] = covSlice.ravel()[covM.maskI]
+    return covM 
+
+def covarianceMatrixFillInMaskedFast( SinglePhaseCovariance, Mask ):
+    '''Calculate a covariance matrix given a mask and single point covariance that is regularly spaced.
+    Faster implementation'''
+    covS=SinglePhaseCovariance.shape
+    maskS=Mask.shape
+    assert (covS[0]/2>=maskS[0] or covS[1]/2>=maskS[1]),\
+      "Size mismatch between one-point covariance and mask"
+    covM = covarianceMatrix( Mask )
+      # \/ recentre covariances
+    covCent = [ (thisDim)//2 for thisDim in covS ] # Py3k
+    singlePhaseCovV=SinglePhaseCovariance.ravel()
+    # \/ copy covariances
+    for i,maskIdx in enumerate( covM.maskI ):
+        maskPos=( maskIdx//maskS[0],maskIdx%maskS[0] )
+        # for each row the index references, it is split into X and Y components
+        # and then the offset is added (subtracted),
+        # and then the indices are wrapped
+        # and finally restored to a 1D index
+        mVI=(  ((covM.maskI%maskS[1])-maskPos[1])%covS[1]
+             +(((covM.maskI//maskS[0])-maskPos[0])%covS[0])*covS[0])
+        covM[i]=singlePhaseCovV.take(mVI)
+    return covM 
 
 def covarianceMatrixExtractInto2D( covM, average=True ):
    '''Extract from a regularly spaced covariance matrix, the single point covariance function.
