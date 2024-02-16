@@ -14,7 +14,6 @@ from __future__ import print_function
 import collections
 import gradientOperator
 import numpy
-import types
 
 class loops( gradientOperator.geometryType1 ):
    gridAN=lambda self,an : [(an%self.n_[1]), (an//self.n_[1])]
@@ -154,7 +153,7 @@ class loopsIntegrationMatrix( loops ):
       return sM
 
    def createInterleaveMatrix(self):
-      if type( self.interleaveM)!=types.NoneType:
+      if self.interleaveM is not None:
          return self.interleaveM
       Ngradients=self.numberSubaps*2
          ## indices=( [ i*(Ngradients+1) for i in range(Ngradients/2) ]+
@@ -167,7 +166,7 @@ class loopsIntegrationMatrix( loops ):
       return self.interleaveM
 
    def createSeparateMatrix(self):
-      if type( self.separateM)!=types.NoneType:
+      if self.separateM is not None:
          return self.separateM
       Ngradients=self.numberSubaps*2
          ## indices=( [ i*(Ngradients+2) for i in range(Ngradients/2) ]+
@@ -180,7 +179,7 @@ class loopsIntegrationMatrix( loops ):
       return self.separateM
 
    def returnOp( self ):
-      if type( self.loopIntM )!=types.NoneType:
+      if self.loopIntM is not None:
          return self.loopIntM # has already been calculated
       self.calculateLoopsDef()
       Ngradients=self.numberSubaps*2
@@ -238,12 +237,12 @@ class loopsNoiseMatrices( loopsIntegrationMatrix ):
       if 'noiseExtM' in dir(self) and 'noiseReductionM' in dir(self):
          # has already been calculated
          return self.noiseExtM, self.noiseReductionM
-      if type( self.loopIntM ) == types.NoneType:
+      if self.loopIntM is None:
          # prepare the loop integration matrix
          loopsIntegrationMatrix.returnOp(self) 
       if not self.sparse:
          # define the inverse
-         if type(self.regularization) in (int,float,types.NoneType):
+         if type(self.regularization) in (int,float,type(None)):
             self.regularizationM=numpy.identity(
                   self.numberSubaps*2 )*(
                   0.1 if self.regularization==None else self.regularization )
@@ -265,7 +264,7 @@ class loopsNoiseMatrices( loopsIntegrationMatrix ):
       else:
          # define the inverse
          import scipy.sparse, scipy.sparse.linalg
-         if type(self.regularization) in (int,float,types.NoneType):
+         if type(self.regularization) in (int,float,type(None)):
             self.regularizationM=scipy.sparse.identity(
                   self.numberSubaps*2 )*(
                   0.1 if self.regularization==None else self.regularization )
