@@ -20,16 +20,31 @@ import sys
 ## using a CoG algorithm.
 ##
 
+## \/ should be in separate file
+#
 def cds(N, roll=False):
    tcds = (numpy.arange(0,N)-(N/2.-0.5))*(N/2.0)**-1.0
    return tcds if not roll else numpy.fft.fftshift(tcds)
 
+## \/ should be in separate file
+#
+def circle(N,fractionalRadius=1):
+   '''for N pixels, return a 2D array which has a circle (1 within, 0
+   without) and radius a fraction of N.
+   '''
+   return numpy.add.outer(
+         cds(N)**2,cds(N)**2 )<(fractionalRadius**2)
+
+## \/ should be in separate file
+#
 def makeTiltPhase(nPix, fac):
    return -fac*numpy.pi/nPix*numpy.add.outer(
          numpy.arange(nPix),
          numpy.arange(nPix)
       )
 
+## \/ should be in separate file
+#
 def rebin(ip,N):
    '''take the square 2D input and the number of sub-apertures and 
    return a 2D output which is binned over the sub-aperture elements
@@ -39,16 +54,19 @@ def rebin(ip,N):
    sapxls=int( numpy.ceil(nPix*float(N)**-1.0) )
    N_=nPix//sapxls # the guessed number of original sub-apertures
    if N_==N:
-      return ip.reshape(
-         [N,sapxls,N,sapxls]).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+#(2023-06-07, replaced)      return ip.reshape(
+#(2023-06-07, replaced)         [N,sapxls,N,sapxls]).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+      nx=ip
    else:
-      newNPix=(N+N_)*sapxls-nPix
-      assert newNPix%1==0,"newNPix isn't bigger by a multiple of sapxls"
-      newNPix=int(newNPix)
+#(2023-06-07, replaced)      newNPix=(N+N_)*sapxls-nPix
+      newNPix=int( N*sapxls )
+#(2023-06-07, redundant)      assert newNPix%1==0,"newNPix isn't bigger by a multiple of sapxls"
+#(2023-06-07, redundant)      newNPix=int(newNPix)
       dnp=newNPix-nPix
       nx=numpy.zeros([newNPix]*2,ip.dtype)
-      nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
-      return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+#(2023-06-07, replaced)      nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
+      nx[ dnp//2:dnp//2+nPix, dnp//2:dnp//2+nPix ]=ip 
+   return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
 
 class FourierShackHartmann(object):
    '''A naïve implementation of a Shack-Hartmann wavefront sensor.
@@ -98,7 +116,7 @@ class FourierShackHartmann(object):
       self.nPix = self.aperture.shape[0]
       self.illuminationFraction = illuminationFraction
       #
-      sapxls=map(lambda s : int(numpy.ceil(s*N**-1.0)), aperture.shape)
+      sapxls=list([ int(numpy.ceil(s*N**-1.0)) for s in aperture.shape ])
       assert len(sapxls)==2 and sapxls[0]==sapxls[1], "Require a square, for now"
       self.sapxls = sapxls[0]
       self._makeCntrArr(self.sapxls//self.resampling)
@@ -141,8 +159,9 @@ class FourierShackHartmann(object):
       cntr=[ numpy.add.outer( linearComponent, numpy.zeros(P)) ]
       cntr.append( cntr[0].T )
       
-      # create an appropriate shape for multiplication with an array of
+      # Create an appropriate shape for multiplication with an array of
       # sub-aperture pixels for each of the two directions
+      # Centroid along second axis (''x'') and then the first (''y'')
       self.cntr = numpy.array(cntr).T.reshape([1,1,P,P,2])
       #
       return self
@@ -203,10 +222,11 @@ class FourierShackHartmann(object):
       C = amplitudeScaling*spatialCoherenceReduction
       polyChromSHImgs = []
       for twl in self.wls:
-         tip = ( A*C*numpy.exp(
+#(debugging)         print(A.shape,C,phs,FFTCentringPhase(twl).shape)
+         tip = rebin( A*C*numpy.exp(
                   -1.0j*( phs+FFTCentringPhase(twl) ) 
                 )
-               ).reshape( [self.N, self.sapxls]*2 ).swapaxes(1,2)
+               ,self.N*self.sapxls).reshape( [self.N, self.sapxls]*2 ).swapaxes(1,2)
          top = abs( numpy.fft.fftshift(
                numpy.fft.fft2( tip, s=[sapxlsFP+twl]*2
                   ), (2,3) ) )**2.0 # no requirement to preserve phase therefore only one fftshift
@@ -222,8 +242,8 @@ class FourierShackHartmann(object):
          # algorithm: truncate each image to the size of the sub-aperture
          #  and compute an average
          for ( i,twl ) in enumerate( self.wls ):
-            idx = ( (self.sapxls*self.mag)/2 + twl//self.binning/2 )+\
-                  numpy.arange( -self.sapxls/2, self.sapxls/2 )
+            idx = ( (self.sapxls*self.mag)//2 + twl//self.binning//2 )+\
+                  numpy.arange( -self.sapxls//2, self.sapxls//2 )
             polyChromSHImgs[i] =\
                   polyChromSHImgs[i].take(idx,axis=2).take(idx,axis=3)
          self.lastSHImage = numpy.mean( polyChromSHImgs, axis=0 )
@@ -243,19 +263,19 @@ class FourierShackHartmann(object):
             width = self.sapxls*self.mag+twl//self.binning
             for l in range(self.N): # vertical
                for m in range(self.N): # horizontal
-                  cornerCoords = map( lambda v :
+                  cornerCoords = [
                        (self.sapxls)*int(
                            0.5+v+(max(self.wls)-twl)//self.binning//2)+
-                       (self.guardPixels*v), (l,m)
-                     )
+                       (self.guardPixels*v) for v in (l,m)
+                      ]
                   canvas[i, cornerCoords[0]:cornerCoords[0]+width,
                             cornerCoords[1]:cornerCoords[1]+width
                      ] += polyChromSHImgs[i][l,m]
          offset = (self.sapxls*self.mag)/2+max(self.wls)//self.binning//2
          # trim and remove any guard-pixels
          idx = numpy.add.outer(
-               numpy.arange(self.N)*(self.sapxls+self.guardPixels),
-               offset+numpy.arange(self.sapxls) ).ravel()
+                   numpy.arange(self.N)*(self.sapxls+self.guardPixels),
+                   offset+numpy.arange(self.sapxls) ).ravel().astype('i')
          canvas = canvas.mean( axis=0 ).take( idx, axis=0 ).take( idx, axis=1 )
          # reshape the canvas, resample, and store
          self.lastSHImage = canvas.reshape(
@@ -267,6 +287,9 @@ class FourierShackHartmann(object):
    def getSlopes( self ):
       '''Based on the last image produced, and the calibrations, estimate
       the slopes using a CoG algorithm.
+      Order is all the slopes along the second axis, and then all the slopes
+      along the first. This is (visually) equivalent to x-slopes and then
+      y-slopes, if indices run along the x-direction (column-then-row order).
       '''
       rawSlopes=(
             (self.cntr*
@@ -343,12 +366,6 @@ class FourierShackHartmann(object):
 
 
 if __name__=="__main__":
-   def circle(N,fractionalRadius=1):
-      '''for N pixels, return a 2D array which has a circle (1 within, 0
-      without) and radius a fraction of N.
-      '''
-      return numpy.add.outer(
-            cds(N)**2,cds(N)**2 )<(fractionalRadius**2)
 
    def doFourierShackHartmannObject( N, pupilAp, illuminationFraction, mag,
          binning, defWls, LT, GP, radialExtension
@@ -623,12 +640,10 @@ if __name__=="__main__":
             ax.set_visible(0)
          pyplot.title( "{0:g}".format( thisSD ),size=10 )
          plotData.append( [ j, thisSD ]+
-               map( lambda k :
-                     [ numpy.mean(thisVariances[k]),
-                       numpy.var(thisVariances[k])
-                        ], 
-                     ('loopInt','inv','inv-orig')
-                  )
+               [ [ numpy.mean(thisVariances[k]),
+                   numpy.var(thisVariances[k])
+                 ] for k in ('loopInt','inv','inv-orig')
+               ]
             )
       plotData = numpy.array([ x[:2]+x[2]+x[3]+x[4] for x in plotData ])
       pyplot.figure(96)
