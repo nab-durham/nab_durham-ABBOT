@@ -10,9 +10,9 @@ def arrayFitter(size,ip):
     the surface onto.
     Returns the fitted surface to the specified size.
     '''
-	npix=numpy.array(ip).shape
-	assert len(npix)==2, "Only valid for 2D input"
-	assert len(size)==2, "Only valid for 2D size"
+    npix=numpy.array(ip).shape
+    assert len(npix)==2, "Only valid for 2D input"
+    assert len(size)==2, "Only valid for 2D size"
     if tuple(npix)==tuple(size):
         return ip
     if npix[0]>size[0]:
