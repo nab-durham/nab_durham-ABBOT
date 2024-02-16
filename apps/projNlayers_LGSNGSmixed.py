@@ -85,9 +85,9 @@ masks=(
 nMasks=[ int(tM.sum()) for tM in masks ]
 
 def doGradientMatrices( masks, nAzis ):
-   gradOps=map( lambda ip : 
-      gradientOperator.gradientOperatorType1(pupilMask=ip), masks )
-   gradMs=map( lambda ip : ip.returnOp(), gradOps )
+   gradOps=[ gradientOperator.gradientOperatorType1(pupilMask=ip) 
+      for ip in masks ]
+   gradMs=[ ip.returnOp() for ip in gradOps ]
    gradAllM=numpy.zeros(
          [ sum(map( lambda ip : gradMs[ip].shape[dirn]*nAzis[ip], (0,1) ))
            for dirn in (0,1) ],
@@ -95,8 +95,8 @@ def doGradientMatrices( masks, nAzis ):
    for i,tnAzi in enumerate(nAzis):
       tgradM=gradMs[i]
       for j in range(tnAzi):
-         offsets=map( lambda ip : gradMs[0].shape[ip]*(i*nAzis[0]), (0,1) )
-         sizes=map( lambda ip : gradMs[i].shape[ip], (0,1) )
+         offsets=[ gradMs[0].shape[ip]*(i*nAzis[0]) for ip in (0,1) ]
+         sizes=[ gradMs[i].shape[ip] for ip in (0,1) ]
          gradAllM[
             offsets[0]+sizes[0]*j: offsets[0]+sizes[0]*(j+1),
             offsets[1]+sizes[1]*j: offsets[1]+sizes[1]*(j+1) ]=tgradM
@@ -144,7 +144,7 @@ def doInputData(actualGeometry, weights, nMasks):
 
 def doRemoveAllLGStilts( ip, gradMs, nAzis ):
    # now remove all tilts from the first set of gradients
-   nSubaps=gradMs[0].shape[0]/2.0
+   nSubaps=gradMs[0].shape[0]//2
    for i in range(nAzis[0]*2):
       ip[nSubaps*i:nSubaps*(i+1)]-=ip[nSubaps*i:nSubaps*(i+1)].mean()
    #
