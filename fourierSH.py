@@ -67,6 +67,18 @@ def rebin(ip,N):
 #(2023-06-07, replaced)      nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
       nx[ dnp//2:dnp//2+nPix, dnp//2:dnp//2+nPix ]=ip 
    return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+# (2024-02-16, left from merge conflict) =======
+# (2024-02-16, left from merge conflict)       return ip.reshape(
+# (2024-02-16, left from merge conflict)          [N,sapxls,N,sapxls]).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+# (2024-02-16, left from merge conflict)    else:
+# (2024-02-16, left from merge conflict)       newNPix=(N+N_)*sapxls-nPix
+# (2024-02-16, left from merge conflict)       assert newNPix%1==0,"newNPix isn't bigger by a multiple of sapxls"
+# (2024-02-16, left from merge conflict)       newNPix=int(newNPix)
+# (2024-02-16, left from merge conflict)       dnp=newNPix-nPix
+# (2024-02-16, left from merge conflict)       nx=numpy.zeros([newNPix]*2,ip.dtype)
+# (2024-02-16, left from merge conflict)       nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
+# (2024-02-16, left from merge conflict)       return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
+# (2024-02-16, left from merge conflict) >>>>>>> 784de58c6a60bb07dedfaa8d807867751bb953d4
 
 class FourierShackHartmann(object):
    '''A naïve implementation of a Shack-Hartmann wavefront sensor.

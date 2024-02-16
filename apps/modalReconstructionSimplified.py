@@ -23,6 +23,7 @@ numpy.random.seed(18071977)
 mask=circle([baseSize,baseSize],baseSize/2)
 mask-=circle([baseSize,baseSize],4)
 mask[:baseSize//2,baseSize//2-1:baseSize//2+1]=0
+>>>>>>> 784de58c6a60bb07dedfaa8d807867751bb953d4
 mask=mask.astype('i')
 gradOp=abbot.gradientOperator.gradientOperatorType1(pupilMask=mask)
 gradM=gradOp.returnOp()

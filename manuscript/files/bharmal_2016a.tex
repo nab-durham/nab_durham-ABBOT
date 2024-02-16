@@ -1,0 +1,321 @@
+\documentclass{scrartcl}
+
+%\documentclass[9pt,twocolumn,twoside]{osajnl}
+
+%\journal{ol}
+
+%\setboolean{shortarticle}{true}
+\usepackage{amssymb}
+\usepackage{tabulary}
+\usepackage{graphicx}
+\usepackage{todo}
+
+\DeclareGraphicsExtensions{.pdf,.png,.jpg}
+
+\begin{document}
+\title{Investigating the control of multiple,identical conjugate deformable mirrors}
+
+%\author[1,*]{Nazim Ali Bharmal}
+%\author[1]{Alastair G Basden}
+%\author[1]{C Marc Dubbeldam}
+%\author[1]{Nicol\'{a}s S Dubost}
+%\author[1]{Colin N Dunlop}
+%\author[1]{Daniel A H\"{o}lck}
+%\author[2]{Yonghui Liang}
+%\author[1]{Richard M Myers}
+%\author[1,2]{Huizhe Yang}
+%\author[1]{Edward J Younger}
+%
+%\affil[1]{Centre for Advanced Instrumentation, Department of Physics, University of Durham, Science Laboratories, South Road, Durham DH1 3LE, United Kingdom}
+%\affil[2]{National University of Defense Technology,...,Changsha, China}
+%\affil[*]{Corresponding author: n.a.bharmal@durham.ac.uk} 
+%\dates{Compiled \today}
+
+%\setboolean{displaycopyright}{true}
+
+%\ociscodes{}%(110.1080) Active or Adaptive Optics; (110.4280) Noise in imaging systems; (110.3925) Metrics}
+
+%\doi{\url{http://dx.doi.org/10.1364/ol.XX.XXXXXX}}
+
+
+%\begin{document}
+
+\maketitle
+
+\abstract{
+Deformable mirrors used to correct optical aberrations often have individual limitations, which can be overcome by using two or more conjugated to the same plane. Such an arrangement with two mirrors is often refered to as woofer--tweeter and this work investigates experimentally how to split or otherwise share the wavefront modification space available to the multiple mirrors. The approach is to use a general laboratory adaptive optics experiment to investigate several algorithms that control two mirrors. Our assumptions include commanding the mirrors at identical update rates, hence temporal effects are disregarded.
+}
+
+%\thispagestyle{fancy}
+%\ifthenelse{\boolean{shortarticle}}{\abscontent}{}
+
+%\section{Introduction}
+
+As adaptive optics in astronomy and other fields becomes more successful, there is a natural drive towards extending the capabilities of the technology. A consequence is that to overcome fundamental limitations of certain components, several are used in conjunction with each individual contributing to a whole which is more capable that the ensemble used separately. Deformable mirrors are a widely deployed wavefront corrector category, and their manufacture has diverged such that they may be classified as either having low spatial resolution with high achievable wavefront amplitude or high spatial resolution with moderate achievable wavefront amplitude. Further, cost and size constraints further grows the split. Correspondingly the joint control of non-independent DMs is important; those that are conjugated to the same optical plane and whose effect is, ideally, described by the concept of a ``meta-DM''.
+
+Although such control can be investigated in numerical simulation, the fidelity of joint control to produce a meta-DM is best validated with representative hardware. DRAGON-NG is such a experiment since the implementation used has two different DMs conjugate to the system pupil and corresponding facilites to observe them with a high-resolution WFS and a high-flux source at (usefully) high speed. Accordingly using the interaction matrix from each DM, one termed low-order and the other high-order, it is possible to investigate different algorithms for meta-DM control. A further issue not addressed here is that each DM can, in principle, have different temporal update limitations (e.g. first resonant frequency). In DRAGON-NG this complication is avoided by virtue of both DMs being operated far from resonant speed and synchronously; so their joint action can realistically be thought of as that from one DM. Then it is both the individual actions of each DM and of them together from which the performance of the joint control algorithms can be assessed.
+
+The relevant configuration of this DRAGON-NG implementation is an on-axis, infinity-conjugated source propagated via a global stop, defining the system pupil, to a ALPAO DM88-25 (the low order DM, or LODM) and then to a ALPAO DM277-15 (the high order DM, or HODM) and thence to an on-axis Shack-Hartmann Wavefront Sensor (the T-WFS in DRAGON-NG parlance, as there are 7 in total). The T-WFS operating speed is defined to be 200\,Hz and has a total of 756 sub-aperture filling a circular pupil. The LODM/HODM has 88/277 controllable actuators, a total of 365. Therefore the pupil is oversampled by the WFS and issues such as waffle are irrelevant. The control software that ties together LODM, HODM, and T-WFS is the DARC RTC, hence the WFS rate defines the DM update rates. 
+
+
+
+%\begin{figure}
+%  % FIGURE 0001
+%  \begin{center}
+%  \includegraphics[width=4.cm]{fig0001a}
+%  \includegraphics[width=4.cm]{fig0001b}
+%  \caption{\label{fig:one}(Left) A synthetic interaction matrix is defined using Fried geometry: a grid of wavefront points coincide with sub-aperture (dashed lines) corners, whereas the sub-aperture slopes lie between the grid points.
+%  (Right) A loop integration matrix is formed by rotated sub-aperture slopes that directly connect groups of four wavefront points into loops; the example loop has slopes in bold and the points as hollow.
+%  }
+%  \end{center}
+%\end{figure}
+
+%\section{Partial noise variance estimation}
+
+The definition of solenoidal noise can be made from the reconstruction problem: $\mathbf{G}w=s$, where $w$ represents a wavefront and $s$ the wavefront slopes. The latter are noise-free slopes measured by a linear wavefront sensor. Solenoidal and Non-Solenoidal noise is written as $\eta=\eta_{s}+\eta_{ns}$, and from noisy slopes the wavefront estimate becomes $w_{est}$. The matrix $\mathbf{G}$ can be described as a gradient operator. In Fig.(\ref{fig:one},left), the relationship is shown between the wavefront grid and the sub-aperture slopes for a synthetic $\mathbf{G}$.  Then, using $\mathbf{H}$ (where $\mathbf{H}\mathbf{G}=\mathbf{I}$),
+
+\begin{equation}
+  w_{est} = \mathbf{H}({s}+{\eta_{s}}+{\eta_{ns}})
+          = \mathbf{H}({s}+{\eta_{ns}}).
+\end{equation}
+
+In other words $\eta_{s}$ is in the null space of matrix $\mathbf{H}$ which implies the estimation step,
+
+\begin{equation}
+  \eta_{s}=\left(\mathbf{I}-\mathbf{G}.\mathbf{H}\right)({s}+{\eta}).
+  \label{eqn:gop}
+\end{equation}
+
+This is the first method for estimating $\eta_s$. However, this method relies on no other terms also lying in the null space of $\mathbf{H}$. Generally $\mathbf{G}$ represents an interaction matrix which is not square, and $\mathbf{H}$ is either a pseudo-inverse of this matrix or requires regularization in its inversion. Here, in order to avoid unwanted terms in the null space, $\mathbf{H}$ is evaluated from a singular-value decomposition of a synthetic interaction matrix from which only machine-noise level singular values are eliminated.
+
+\begin{table}
+   \begin{tabular}{r|l}\hline
+      Pupil shape & circular \\
+      N (order) & 16 \\
+      pixels/sub-aperture focus & 4 \\
+      Focal length & $4\times\Delta_{sa}/\lambda$ \\
+      Sub-ap. fractional illumination & $\geq 50$\,\% \\
+      Illumination total/sub-aperture & 100 counts \\
+      RON-equivalent/sub-aperture & 5 \\
+      SVD singular value elimination & $10^{-8}\times$ largest value \\
+   \hline
+   \end{tabular}
+\caption{\label{table:one}Parameters for the simulation of a SH-WFS. It is scale ($\Delta_{sa}$=sub-aperture size) and wavelength ($\lambda$) independent.}
+\end{table}
+
+An explicit method to estimate $\eta_s$ is to construct sums of slope loops from rotated slopes\cite{Herrmann:1980,Hattori:2003}, as illustrated in Fig.(\ref{fig:one},right). The sum of each slope loop is zero unless solenoidal noise is present. Therefore the following relationship can be written,
+
+\begin{equation}
+  \mathbf{L}({s}+{\eta_{s}}+{\eta_{ns}}) = \mathbf{L}{\eta_{s}},
+\end{equation}
+
+where $\mathbf{L}$ is described as a discrete loop (or curl) operator.
+Then inverting this matrix leads to an estimate of $\eta_{s}$,
+
+\begin{equation}
+  \eta_{s}=\mathbf{L}^{\dagger}\mathbf{L}({s}+{\eta}).
+  \label{eqn:loops}
+\end{equation}
+
+To form $\mathbf{L}^\dagger$, which is non-square, a least-squares method is used with regularization,
+
+\begin{equation}
+   \mathbf{L}^{\dagger}=(\mathbf{L}^{T}\mathbf{L}+\mathbf{R})^{-1}\mathbf{L}^{T}.
+\end{equation}
+
+The regularization term $\mathbf{R}$ is diagonal, as each slope's solenoidal noise is assumed zero-mean and uncorrelated. Treating $R_{ii}$ as an {\it a priori} constraint of $\langle\eta_{s;i}^2\rangle$ for each slope $i$ suggests,
+
+\begin{equation}
+   R_{ii} = \alpha + 0.25\times I(i)/\langle{I}\rangle + \left\{\begin{array}{ll}
+   \beta.x(i)^2 & \mathrm{for\ x slopes\ and},\\
+   \beta.y(i)^2 & \mathrm{for\ y slopes.}
+   \end{array}\right.
+   \label{eqn:reg}
+\end{equation}
+
+As the problem is under-determined (fewer loops than sub-aperture slopes), $\alpha$ constrains the solution. The normalised intensities, $I(i)/\langle{I}\rangle$, are per sub-aperture associated with the $i$-th slope, which allows for photon noise. (If slopes are organised as XY-pairs, then this is sub-aperture $(i\,\mathrm{mod}\,2)$.) The final term with normalised pupil coordinates ($x$ or $y$ equals one at the edge of the pupil) allows for perspective elongation effects e.g.~observing a laser guide star from off-axis sub-apertures. For the following results, $\alpha=10^{-3}$ and $\beta=0$ which means that the regularization is arbitrary, that intensity effects are modulated by 1/4\textsuperscript{th} because of the CoG spot position algorithm employed, and that elongation effects are not relevant.
+
+To compare the estimation of $\eta_{s}$ using the gradient reconstruction method (via $\mathbf{H}$) and loop summation (via $\mathbf{L}$), noisy slope data from a $N\times N$ SH-WFS simulation is utilized. The simulation parameters are shown in table \ref{table:one}. The resulting comparison is shown in Fig.(\ref{fig:three}). This plot shows $\langle{(\eta-\eta_{s;H})^2}\rangle$ and $\langle{(\eta-\eta_{s;L})^2}\rangle$ (the variance of noise less solenoidal noise via, respectively, $\mathbf{H}$ and $\mathbf{L}$) in descending order of the noise variance. As required, the variance of the residual is less than that of the variance of the noise which implies a partial estimation of noise variance is possible.
+
+\begin{figure}
+  % FIGURE 0003
+ \includegraphics[width=8cm]{fig0003.pdf}
+  \caption{\label{fig:three}The normalised variance of noise (bold line), sorted in descending amplitude, from simulated slopes. The lines with plus or point symbols represent the residual variance when the solenoidal noise estimate from gradient reconstruction or loop summation, respectively, is removed. The inset displays the 33 slopes with largest noise.
+  }
+\end{figure}
+
+%\section{Estimating total noise variance}
+
+\begin{table}\begin{centering}
+   % TABLE TWO
+   \begin{tabular}{r|l}\hline
+      No. of references & $\langle\eta_{s}^2\rangle \rightarrow \langle\eta^2\rangle$ \\
+      to sub-aperture &  scaling\\ \hline
+      1 & 14/2 \\
+      2 & 14/4 \\
+      3 & 14/5 \\
+      4 & 14/6 \\
+   \hline
+   \end{tabular}
+   \caption{The conversion scaling, $m$, between $\langle{\eta_s}\rangle$ and $\langle{\eta}\rangle$.}
+   \label{table:two}
+\end{centering}\end{table}
+
+Alone, the utility of $\eta_{s}$ is limited. First, this term is implicitly rejected during wavefront reconstruction. Second, for analyses of slopes it represents only part of $\eta$ (which remains unknown). Now we consider $\langle\eta_{s}^2\rangle$ in more detail. As $\eta_{ns}$ and $\eta_{s}$ are both random variables originating from the same source, a hypothesis is that the covariance of these term's ensemble variance is non-zero.  In other words, noise variance is correlated for the same sub-aperture between the solenoidal and non-solenoidal terms.
+
+A normalised covariance of 0.40 is found from the simulation data.  This suggests the following relationship  $\langle\eta^2\rangle=\langle\eta_{s}^2\rangle + 2\langle\eta_{s}\eta_{ns}\rangle + \langle\eta_{ns}^2\rangle$=$(1+\gamma)\langle\eta_{s}^2\rangle$ and, using the simulation data, $\gamma$ is found to take one of four values. Our conclusion is that ensemble noise variance can be estimated as $\langle\eta_{i}^2\rangle=M(i,m)\times\langle\eta_{s;i}^2\rangle$.
+
+The function $M$ selects the value from $m$, whose values are shown in table \ref{table:two}, given slope number $i$ by counting how many times the associated sub-aperture is referred to in $\mathbf{L}$. This is between zero to four, inclusive. (If zero, then no retrieval of $\langle\eta^2\rangle$ is possible for either slope in the associated sub-aperture.) The scaling introduced here differs from previous work\cite{Herrmann:1980} where alternative wavefront sensor geometries were considered without scaling.
+
+
+\begin{figure}
+  % FIGURE 0004
+  \includegraphics[width=8cm]{fig0004}
+  \caption{\label{fig:four}The estimated vs. determined $\langle{\eta^2}\rangle$ for WFS slopes that are (LEFT) simulated or (RIGHT) data from {\sc Dragon}, and when there is (TOP) no slope signal (${s}=0$), or (BOTTOM) a non-zero signal (${s}\neq0$).  The estimate of $\langle{\eta^2}\rangle$ with open diamonds (red) uses $\mathbf{H}$ while the points (black) uses $\mathbf{L}$ and regularization. For the data, the estimated variance uncertainty is shown in the bottom right.
+  }
+\end{figure}
+
+The complete ensemble noise estimation method can therefore be written as,
+
+\begin{equation}
+   \langle\eta^2\rangle = (\mathbf{M}m) \times
+         \langle\eta_{s}^2\rangle = (\mathbf{M}m) \times
+      {\left\langle \left( 
+         \mathbf{L}^{\dagger}\mathbf{L}({s}+{\eta})
+       \right)^2 \right\rangle},
+    \label{eqn:complet}
+\end{equation}
+
+where $\mathbf{M}m$ is a vector of length the number of slopes and ${s}+{\eta}$ is noisy slope data.  In Fig.\ref{fig:four} a comparison of the ensemble noise estimation methods--using $\mathbf{H}$ or $\mathbf{L}$, and then the scaling--is made with pre-determined noise. A corresponding summary of the accuracy is shown in Table \ref{table:three}.
+%(mi ho rimavato 2015/11/09) To compute $\langle\eta_{s}^2\rangle$ both explicit integration 
+
+The benefit of using regularization for $\mathbf{L}^\dagger$ is evident: for the simulation results, the dispersion for low noise data (the bulk of the estimate) is much reduced and even the high noise data benefits, and when underlying slope signal is either zero or non-zero ($s=0$ or $s\neq0$). For the experimental data, from the $31\times31$ on-axis WFS of the {\sc Dragon} test-bench\cite{Reeves:2012}, first the signal-free results are discussed. The dispersion (uncertainty) is reduced and becomes consistent with the expected uncertainty. There is a (small) positive bias in the estimate for low noise which is understood as a lack of homogeneity in the underlying WFS implementation.
+
+When the measurements with time-varying slopes ($s\neq0$) are analysed, it is clear that there appears to be a significant bias in estimating $\langle\eta^2\rangle$. With regularization this bias remains a constant multiple of the pre-determined noise. It is necessary to assume that the pre-determined noise is identical for both sets of measurements i.e.~$\langle\eta^2\rangle(s\neq0)\equiv\langle\eta^2\rangle(s=0)$
+%, the noise is assumed as for $s=0$.
+.) An interpretation is that when there are time- \& space-varying slope signals, the SH spots intensities are negatively affected and this introduces further noise. As partial corroboration, an increase in sub-aperture intensity standard deviation by up to $\times10$ was found in this case. Then the first order estimate of increase in noise becomes $\sim\times1.6$, which is consistent with the observed data.
+
+For a precision of 1,5, or 20\% in $\langle\eta^2\rangle$ if treated as a sample of a stationary population, there are required to be 20000, 800, or 51 samples of $\eta_s$. The measurements consist of 2500 sequential data and from this we can predict the uncertainty of the measured $\langle\eta^2\rangle$ as being 3\%, which is consistent with the uncertainty bars in the figure.
+
+We note here that the values of $m$ are derived from Eqn.\ref{eqn:complet} by utilising using random, uncorrelated values as a proxy for $\eta$. Then $m$ was used with both simulated and measured data, and no significant discrepancy was found in the estimation process. Therefore $m$ is assumed a set of universal constants, although it is not known why they take their established values.
+
+\begin{table}
+   % TABLE 003
+   \begin{tabular}{r@{, }l|c|c}\hline
+      \multicolumn{2}{c|}{Input}
+         & \multicolumn{2}{c}{Estimated:measured $\langle{\eta^2}\rangle$} \\
+      \multicolumn{2}{c|}{{}} & Explicit & Loop sums \\ \hline
+      %%%
+      a) simulation& ${s}=0$    & $1.1\pm0.2$ & $1.02\pm0.03$ \\
+      b) data &      ${s}=0$    & $1.1\pm0.2$ & $1.1\pm0.3$ \\
+      c) simulation& ${s}\neq0$ & $1.1\pm0.2$ & $1.02\pm0.07$ \\
+      d) data &      ${s}\neq0$ & $1.8\pm0.4$ & $1.7\pm0.5$ \\ \hline
+   \hline
+   \end{tabular}
+\caption{\label{table:three} Comparison of the noise variance using four different data sets and the two estimation methods, summarising the plots in Fig.\ref{fig:four}.}
+\end{table}
+
+%\section{Estimating inhomogeneous noise variance}
+
+The previous analysis operated under the assumption that $\langle\eta^2\rangle$ was homogeneous and so the noise variance originating from either slope in each sub-aperture was identical (excepting total illumination variation). Now, the regularization will account for inhomogeneous noise, for example when SH spots are elongated.
+
+An example of elongated SH spots is shown in the top left of Fig.(\ref{fig:five}). In the context of Eqn.(\ref{eqn:reg}), the term $\beta$ is now set to $0.05$. To separate the effect of partial illumination of sub-apertures (which causes further elongation), two categories are used: either partially or fully illuminated and shown in the top right of Fig.(\ref{fig:five}) as either pale or dark shading. The comparison of estimated $\langle\eta^2\rangle$ with actual variance, in the bottom plots of the figure, also follows this division; left/right for the noise originating from fully/partially illuminated sub-apertures.
+
+\begin{table}
+   % TABLE 004
+   \begin{tabular}{r@{ }l|c|r@{$\pm$}l}\hline
+      \multicolumn{2}{c|}{Situation} & Regularization? & \multicolumn{2}{|c}{Normalized residual / \%} \\
+      \hline
+      Full & H &   & $16$		& $7		$\\
+       -"- & L & N & $1.4$		& $4.5	$\\
+       -"- & L & Y & $2.0$		& $3.1	$\\
+   Partial & H &   & $2  $		& $34 	$\\
+       -"- & L & N & $0  $		& $13 	$\\
+       -"- & L & Y & $-4.4$	& $9.3	$\\
+   \hline
+   \end{tabular}
+\caption{\label{table:four} Summary as normalised residuals of the data presented in Fig.\ref{fig:five}. The situation describes the two illumination states considered (see the text for details) and the algorithm used, and then whether regularization was applied.}
+\end{table}
+
+In Table \ref{table:four} is shown a summary of the noise comparison, and it can be seen that the most precise estimate for fully illuminated sub-apertures arises from using loop integration with elongation regularization. Using implicit estimation of solenoidal noise results in large scatter and poor accuracy for partially illuminated sub-apertures.
+%(mi ho rimivato 2015/11/09) while explicit estimation without elongation regularization also results in  a departure from the 1:1 relationship. The estimate with good accuracy occurs from explicit estimation with complete regularization. For partially illuminated sub-apertures, all methods fail, although using complete regularization improves the estimation accuracy.
+
+The loop summation methods with intensity regularization result in much greater accuracy. However, the precision only becomes sufficient for fully illuminated sub-apertures when elongation regularization is added. Without regularization there is a bias which is dependant on the magnitude of the noise, as would be expected by a least-squares fit.
+
+When partially illuminated sub-apertures are considered, their noise is not well estimated. This is not surprising since no appropriate consideration of these sub-aperture's elongation is made. However, consideration of the per sub-aperture illumination (intensity) leads to a substantial improvement, and ({\it a priori} and therefore incorrect) elongation regularization reduces the dispersion further. 
+
+%\section{Summary}
+
+The work presented above is an extension for the method of estimating noise under conditions of non-zero space--time-variable wavefront sensor signals. The principal points deriving from the method are:
+
+\begin{enumerate}
+   \item The existence of solenoidal and non-solenoidal noise is noted and their statistical relationship is derived here in terms of their covariance, and
+   \item To obtain the scaling from solenoidal noise variance to total noise variance requires the construction of $\mathbf{L}$ and this scaling is new, and
+   \item Estimation of $\langle\eta^2\rangle$ is demonstrated with simulated and measured slopes from SH WFSs, and
+   \item The method accounts for partially illuminated sub-apertures via a constraint term, and
+   \item The constraints are extended to inhomogeneous noise e.g. variably extended spots.
+\end{enumerate}
+
+Due to the generic nature of the algorithm, it is expected to be usable with any derivative-based WFS such as the Pyramid or Fourier gradient filter types.
+
+\begin{figure}
+  % FIGURE 0005
+  \includegraphics[width=8cm]{fig0005}
+  \caption{\label{fig:five} The estimation of $\langle\eta^2\rangle$ versus
+  the known variance for elongated SH spots, for three algorithms. Plot a) shows the SH spots , and b) whether spot's associated sub-apertures are fully or partially illuminated (pale or dark shading). Plot c)/d) shows the comparison of noise variance for slopes from fully/partially illuminated sub-apertures. The circle, cross, and plus symbols represent the explicit, intensity-only regularised loop summation, or intensity-and-elongation regularised loop summation algorithms respectively.}
+\end{figure}
+
+%\section{Acknowledgements}
+~\\
+\noindent
+NAB acknowledges STFC funding from grants ST/L002213/1 and ST/L00075X/1, supporting the DRAGON laboratory experiment and this work. NAB and APR thank all those who have contributed to the development and integration of DRAGON. The data from DRAGON and example implementations of the algorithm, including the simulation code used herein, are available from NAB.
+
+\begin{thebibliography}{10}
+\newcommand{\enquote}[1]{``#1''}
+
+\bibitem{Rousset:1999} G.~Rousset, Adaptive optics in Astronomy, {\bf 1}, 91, (1999).
+
+\bibitem{Ellerbroek:2009} B.~Ellerbroek and C.~Vogel, Inv.Prob., {\bf 25:6}, 063001 (2009). 
+
+\bibitem{Herrmann:1980} J.~Herrmann, JOSA, {\bf 70}, 28 (1980).
+
+\bibitem{Chen:2007} M.~Chen, F.S.~Roux, and J.C.~Olivier, J.Opt.Soc.Am.A, {\bf 24}, 1994 (2007).
+
+\bibitem{Fusco:2004} T.~Fusco, G.~Rousset, D.~Rabaud, \'{E.}~Gendron, D.~Mouillet, F.~Lacombe, G.~Zins, P-Y.~Madec, A-M.~Lagrange, J.~Charton, D.~Rouan, N.~Hubin, and N.~Ageorges, J.Opt.A, {\bf 6},585, (2004).
+
+\bibitem{Vidal:2014} F.~Vidal, \'{E}.~Gendron, G.~Rousset, T.~Morris, A.~Basden, R.~Myers, M.~Brangier, F.~Chemla, N.~Dipper, D.~Gratadour, D.~Henry, Z.~Hubert, A.~Longmore, O.~Martin, G.~Talbot and E.~Younger, A\&A, {\bf 569}, A16 (2014).
+
+\bibitem{Hattori:2003} M.~Hattori and S.~Komatsu, J.Mod.Opt., {\bf 50}, 1705 (2003).
+
+\bibitem{Reeves:2012} A.P.~Reeves, R.M.~Myers, T.J.~Morris, A.G.~Basden, N.A.~Bharmal, S.~Rolt, D.G.~Bramall, N.A.~Dipper, and E.J.~Younger, Proc.SPIE, {\bf 8447}, 84474Y (2012). 
+
+\end{thebibliography}
+
+\newpage
+
+\section{ADDITIONAL MATERIAL AS REQUESTED BY OSA}
+
+\subsection{Complete bibliography}
+
+\begin{thebibliography}{10}
+\newcommand{\enquote}[1]{``#1''}
+
+\bibitem{Rousset:1999:full} G.~Rousset, \enquote{Wave-front sensors.} Adaptive optics in Astronomy, {\bf 1}, 91, (1999).
+
+\bibitem{Ellerbroek:2009:full} B.~Ellerbroek and C.~Vogel, \enquote{Inverse Problems in Astronomical Adaptive Optics.} Inv.Prob., {\bf 25:6}, 063001 (2009). 
+
+\bibitem{Herrmann:1980:full} J.~Herrmann, \enquote{Least-squares wave front errors of minimum norm.} JOSA, 70(1), 28-35 (1980).
+
+\bibitem{Chen:2007:full} M.~Chen, F.S.~Roux, and J.C.~Olivier, \enquote{Detection of phase singularities with a Shack-Hartmann wavefront sensor.} J.Opt.Soc.Am.A, {\bf 24}, 1994 (2007).
+
+\bibitem{Fusco:2004:full} T.~Fusco, G.~Rousset, D.~Rabaud, \'{E.}~Gendron, D.~Mouillet, F.~Lacombe, G.~Zins, P-Y.~Madec, A-M.~Lagrange, J.~Charton, D.~Rouan, N.~Hubin, and N.~Ageorges, \enquote{NAOS on-line characterization of turbulence parameters and adaptive optics performance.} J.Opt.A, {\bf 6},585, (2004).
+
+\bibitem{Vidal:2014:full} F.~Vidal, \'{E}.~Gendron, G.~Rousset, T.~Morris, A.~Basden, R.~Myers, M.~Brangier, F.~Chemla, N.~Dipper, D.~Gratadour, D.~Henry, Z.~Hubert, A.~Longmore, O.~Martin, G.~Talbot and E.~Younger, \enquote{Analysis of on-sky MOAO performance of CANARY using natural guide stars.} A\&A, {\bf 569}, A16 (2014).
+
+\bibitem{Hattori:2003:full} M.~Hattori and S.~Komatsu, \enquote{An exact formulation of a filter for rotations in phase gradients and its applications to wavefront reconstruction problems.} J.Mod.Opt., 50:11, 1705-1723 (2003).
+
+\bibitem{Reeves:2012} A.P.~Reeves, R.M.~Myers, T.J.~Morris, A.G.~Basden, N.A.~Bharmal, S.~Rolt, D.G.~Bramall, N.A.~Dipper, and E.J.~Younger, \enquote{DRAGON: a wide-field multipurpose real time adaptive optics test bench.} Proc.SPIE, {\bf 8447}, 84474Y (2012). 
+
+\end{thebibliography}
+
+\end{document}
