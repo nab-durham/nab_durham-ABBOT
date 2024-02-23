@@ -20,15 +20,15 @@ import sys
 nAzi=4
 baseSize=8
 za=15/20.0e3
-dH=2e3
-Hmax=6e3
+dH=3e3
+Hmax=12e3
 snr=10
 #
 testZernikes=False
 nullNth=False
 sameGeometry=True
 #
-useDerivativeOp=[False,'grads','lap','curv'][2]
+useDerivativeOp=[False,'grads','lap','curv'][1]
 derivativeOpFirst=False
 #
 # None means Tikhonov
@@ -74,7 +74,7 @@ if useDerivativeOp!=False:
       elif useDerivativeOp=='lap':
          print("Laplacian operator applied")
          derivOp=gradientOperator.laplacianOperatorType1(
-               pupilMask=mask, rebalance=0)
+               pupilMask=mask) #, rebalance=0)
          derivM=derivOp.returnOp()
       else:
          raise ValueError("Unsupported derivative operator")
@@ -395,7 +395,7 @@ if valid:
       print("\nCentre proj")
       for i in range(reconGeometry.nLayers):
          pyp.subplot(reconGeometry.nLayers,3,1+i*3)
-         centreMaskedA[i,0].ravel()[actualGeometry.maskIdx]=\
+         centreMaskedA[i,0].ravel()[actualGeometry.maskIdxs[0]]=\
             centreRecoveredV[i*nMask:(i+1)*nMask]
          centreMaskedA[i,0]-=centreMaskedA[i,0].mean()
          pyp.imshow( centreMaskedA[i,0]+0.0, interpolation='nearest',
@@ -405,7 +405,7 @@ if valid:
          
          pyp.subplot(reconGeometry.nLayers,3,2+i*3)
          if i==0: pyp.title("centre proj: input vs. reconstruction")
-         centreMaskedA[i,1].ravel()[actualGeometry.maskIdx]=\
+         centreMaskedA[i,1].ravel()[actualGeometry.maskIdxs[0]]=\
             inputCentreV[i*nMask:(i+1)*nMask]
          centreMaskedA[i,1]-=centreMaskedA[i,1].mean()
          pyp.imshow( centreMaskedA[i,1]+0.0, interpolation='nearest',
@@ -440,9 +440,9 @@ if valid:
       centreSumMaskedA[i]=numpy.ma.masked_array( 
          numpy.zeros(mask.shape), [mask==0] )
    pyp.figure(3)
-   centreSumMaskedA['actual'].ravel()[actualGeometry.maskIdx]=actualCentSumV
-   centreSumMaskedA['recon'].ravel()[actualGeometry.maskIdx]=reconCentSumV
-   centreSumMaskedA['naive'].ravel()[actualGeometry.maskIdx]=naiveMeanV
+   centreSumMaskedA['actual'].ravel()[actualGeometry.maskIdxs[0]]=actualCentSumV
+   centreSumMaskedA['recon'].ravel()[actualGeometry.maskIdxs[0]]=reconCentSumV
+   centreSumMaskedA['naive'].ravel()[actualGeometry.maskIdxs[0]]=naiveMeanV
 
    minMax=( centreSumMaskedA['actual'].ravel().min()
           , centreSumMaskedA['actual'].ravel().max() )
