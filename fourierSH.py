@@ -13,72 +13,13 @@ Running the script through the python interpreter will test it.
 from __future__ import print_function
 import numpy
 import sys
+from utilities import cds,circle,makeTiltPhase,rebin
 
 ### CONCEPT FOR OO VERSION
 ## A simple object, that contains functions to initiate the parameters to
 ## simulate a SH image, to create a SH image, and to process a SH image
 ## using a CoG algorithm.
 ##
-
-## \/ should be in separate file
-#
-def cds(N, roll=False):
-   tcds = (numpy.arange(0,N)-(N/2.-0.5))*(N/2.0)**-1.0
-   return tcds if not roll else numpy.fft.fftshift(tcds)
-
-## \/ should be in separate file
-#
-def circle(N,fractionalRadius=1):
-   '''for N pixels, return a 2D array which has a circle (1 within, 0
-   without) and radius a fraction of N.
-   '''
-   return numpy.add.outer(
-         cds(N)**2,cds(N)**2 )<(fractionalRadius**2)
-
-## \/ should be in separate file
-#
-def makeTiltPhase(nPix, fac):
-   return -fac*numpy.pi/nPix*numpy.add.outer(
-         numpy.arange(nPix),
-         numpy.arange(nPix)
-      )
-
-## \/ should be in separate file
-#
-def rebin(ip,N):
-   '''take the square 2D input and the number of sub-apertures and 
-   return a 2D output which is binned over the sub-aperture elements
-   and centred.
-   '''
-   nPix=ip.shape[0]
-   sapxls=int( numpy.ceil(nPix*float(N)**-1.0) )
-   N_=nPix//sapxls # the guessed number of original sub-apertures
-   if N_==N:
-#(2023-06-07, replaced)      return ip.reshape(
-#(2023-06-07, replaced)         [N,sapxls,N,sapxls]).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
-      nx=ip
-   else:
-#(2023-06-07, replaced)      newNPix=(N+N_)*sapxls-nPix
-      newNPix=int( N*sapxls )
-#(2023-06-07, redundant)      assert newNPix%1==0,"newNPix isn't bigger by a multiple of sapxls"
-#(2023-06-07, redundant)      newNPix=int(newNPix)
-      dnp=newNPix-nPix
-      nx=numpy.zeros([newNPix]*2,ip.dtype)
-#(2023-06-07, replaced)      nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
-      nx[ dnp//2:dnp//2+nPix, dnp//2:dnp//2+nPix ]=ip 
-   return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
-# (2024-02-16, left from merge conflict) =======
-# (2024-02-16, left from merge conflict)       return ip.reshape(
-# (2024-02-16, left from merge conflict)          [N,sapxls,N,sapxls]).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
-# (2024-02-16, left from merge conflict)    else:
-# (2024-02-16, left from merge conflict)       newNPix=(N+N_)*sapxls-nPix
-# (2024-02-16, left from merge conflict)       assert newNPix%1==0,"newNPix isn't bigger by a multiple of sapxls"
-# (2024-02-16, left from merge conflict)       newNPix=int(newNPix)
-# (2024-02-16, left from merge conflict)       dnp=newNPix-nPix
-# (2024-02-16, left from merge conflict)       nx=numpy.zeros([newNPix]*2,ip.dtype)
-# (2024-02-16, left from merge conflict)       nx[ dnp//2:-dnp//2, dnp//2:-dnp//2 ]=ip
-# (2024-02-16, left from merge conflict)       return nx.reshape([N,sapxls]*2).swapaxes(1,2).sum(axis=-1).sum(axis=-1)
-# (2024-02-16, left from merge conflict) >>>>>>> 784de58c6a60bb07dedfaa8d807867751bb953d4
 
 class FourierShackHartmann(object):
    '''A naïve implementation of a Shack-Hartmann wavefront sensor.
