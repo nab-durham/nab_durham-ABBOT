@@ -65,7 +65,7 @@ class loops( gradientOperator.geometryType1 ):
       self.rotated=rotated
       self.loopsDef=[]
       self.loopTemplates=loopTemplates
-      if not isinstance( self.loopTemplates[0], collections.Iterable ):
+      if not isinstance( self.loopTemplates[0], collections.abc.Iterable ):
          self.loopTemplates=[loopTemplates]
       self.verbose=verbose
 

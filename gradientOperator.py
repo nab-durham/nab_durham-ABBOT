@@ -221,11 +221,11 @@ class gradientOperatorType2(gradientOperatorType1):
         # direction and vice-versa.
         self.n=subapMask.shape
         
-        self.subapXMask=numpy.zeros([self.n[1]+1,self.n[0]],numpy.bool)
+        self.subapXMask=numpy.zeros([self.n[1]+1,self.n[0]],bool)
         self.subapXMask[:-1]=subapMask
         self.subapXMask[1:]+=subapMask 
         
-        self.subapYMask=numpy.zeros([self.n[1],self.n[0]+1],numpy.bool)
+        self.subapYMask=numpy.zeros([self.n[1],self.n[0]+1],bool)
         self.subapYMask[:,:-1]=subapMask
         self.subapYMask[:,1:]+=subapMask 
 
