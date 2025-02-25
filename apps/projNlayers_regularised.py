@@ -17,8 +17,8 @@ import sys
 #??# I think it is here to account for the setting of the seed
 #??for i in range(3): j=numpy.random.normal()
 
-nAzi=4
-baseSize=8
+nAzi=5
+baseSize=13
 za=15/20.0e3
 dH=3e3
 Hmax=12e3
@@ -41,8 +41,9 @@ laplacian=True
 
 
 
-mask=Zernike.anyZernike(1,baseSize,baseSize/2,ongrid=1)\
-      -Zernike.anyZernike(1,baseSize,baseSize/2/7.0,ongrid=1)
+mask=numpy.ones([baseSize]*2)
+#Zernike.anyZernike(1,baseSize,baseSize/2,ongrid=1)\
+#      -Zernike.anyZernike(1,baseSize,baseSize/2/7.0,ongrid=1)
 mask=mask.astype(numpy.int32)
 nMask=int(mask.sum())
 
