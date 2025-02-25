@@ -228,7 +228,7 @@ class FourierShackHartmann(object):
          # trim and remove any guard-pixels
          idx = numpy.add.outer(
                    numpy.arange(self.N)*(self.sapxls+self.guardPixels),
-                   offset+numpy.arange(self.sapxls) ).ravel().astype('i')
+                   offset+numpy.arange(-self.sapxls//2, -self.sapxls//2+self.sapxls) ).ravel().astype('i')
          canvas = canvas.mean( axis=0 ).take( idx, axis=0 ).take( idx, axis=1 )
          # reshape the canvas, resample, and store
          self.lastSHImage = canvas.reshape(
