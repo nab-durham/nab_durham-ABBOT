@@ -11,7 +11,7 @@ See the 'LICENCE' file.
 ORIGIN
 ===
 
-1. Copyright Nazim Ali Bharmal, 2010-2021
+1. Copyright Nazim Ali Bharmal, 2010-2021, other authors are per their commits
 2. Initially funded by The Royal Commission for the Exhibition of 1851
 3. There is no relationship, implied or otherwise, with Durham University other
    than having been used in that institution
