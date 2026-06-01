@@ -222,7 +222,7 @@ def covarianceDirectRegular( nfft, r0, L0=None, offset=[0,0] ):
 class covarianceMatrix(numpy.ndarray):
    '''Internal class that should only be instantiated by a following function.'''
    def __new__( self, mask ):
-      mask = numpy.array(mask).astype(numpy.bool)
+      mask = numpy.array(mask).astype('i')
       assert len(mask.shape)==2, "Expect a 2D mask"
       maskI = numpy.flatnonzero( mask.ravel() )
       illuminatedNo = len(maskI)
@@ -240,7 +240,7 @@ def covarianceMatrixFillInRegular( SinglePhaseCovariance ):
     maskShape=[ thisShape//2 for thisShape in SinglePhaseCovariance.shape ]
     return covarianceMatrixFillInMasked(
              SinglePhaseCovariance, 
-             numpy.ones( maskShape, numpy.bool )
+             numpy.ones( maskShape, 'i' )
         )
 
 # def covarianceMatrixFillInMasked( SinglePhaseCovariance, Mask ):

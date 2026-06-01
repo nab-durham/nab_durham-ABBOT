@@ -5,10 +5,13 @@ and with variable regularization.
 '''
 from __future__ import print_function
 ##import commonSeed 
-import gradientOperator
+import abbot.gradientOperator as gradientOperator
+import abbot.phaseCovariance as pc
 import numpy
 import sys
 import time
+import pylab
+import matplotlib.pyplot as pg
 
 
 ## variables begin -----------------------------------------
@@ -79,7 +82,6 @@ def printTimings():
    print(" "+"="*40)
 
 def doPlots():
-   import matplotlib.pyplot as pg
    pg.figure(2)
    pg.subplot(231)
    pg.imshow( onePhaseD, interpolation='nearest', origin='lower',
@@ -129,7 +131,6 @@ def setupGeometry(nfft,obscuration=[0.5,0]):
 def setupPhase(r0,L0):
    # define phase at corners of pixels, each of which is a sub-aperture
    timings['s:phaseC']=time.time()
-   import phaseCovariance as pc
    covPlus=pc.covarianceMatrixFillInRegular(
          pc.covarianceDirectRegular(nfft+2,r0,L0)
       )
@@ -264,7 +265,6 @@ def doVariableNoiseComparison():
          'm':rDsR.reshape([ -1,(2/deltaNoise)+1, nReps ]).mean(axis=-1),
          'v':rDsR.reshape([ -1,(2/deltaNoise)+1, nReps ]).var(axis=-1),
       }
-   import pylab
    pylab.figure(1)
    pylab.subplot(2,2,1)
    pylab.imshow( rDsK['m'], vmin=0, vmax=1.0,
@@ -307,8 +307,8 @@ print("[Setup]",end="") ; sys.stdout.flush()
 ( pupilMask,gO,gM,gTgM,waffleV,lO,lM )=setupGeometry(nfft,obscuration)
 ( covPlus, cov_I, onePhase, onePhaseV, onePhaseD )=setupPhase(r0,L0)
 ### onePhaseV=numpy.random.normal(0,onePhaseV.var()**0.5,len(onePhaseV))
-onePhaseV = numpy.where(
-      numpy.random.uniform(-1,1,size=gO.numberPhases)>0, 1, -1 )
+### onePhaseV = numpy.where(
+###      numpy.random.uniform(-1,1,size=gO.numberPhases)>0, 1, -1 )
 onePhaseD.ravel()[gO.illuminatedCornersIdx]=onePhaseV
 
 print("[Input]",end="") ; sys.stdout.flush()
